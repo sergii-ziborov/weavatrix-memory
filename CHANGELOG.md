@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-26
+
+### Added
+
+- Optional versioned LZ4 codec wrapper with incompressible-data fallback and a
+  decoded-size allocation limit.
+- Optional XChaCha20-Poly1305 codec wrapper with OS-generated nonces,
+  authenticated context, envelope key identifiers, zeroizing static keys, and
+  a provider contract for key rotation.
+- Optional guarded read-only memory mapping for immutable snapshot generations.
+- Output-checked compression, authentication, tamper, allocation-limit, and
+  mmap snapshot tests.
+- Interleaved, median-based secure-storage and buffered-versus-mmap benchmark.
+
+### Changed
+
+- Snapshot framing is isolated from generation management so buffered and
+  memory-mapped reads share identical header, length, CRC32C, and cursor
+  validation.
+- Codec errors are storage-neutral, and encryption zeroizes temporary
+  plaintext buffers in addition to owned static keys.
+
+## [0.1.0] - 2026-07-26
+
 ### Added
 
 - Atomic append-only event store contract with optimistic concurrency.

@@ -1,6 +1,6 @@
 [package]
 name = "weavatrix-memory"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Event-sourced, bitemporal context compiler for coding agents"
@@ -13,14 +13,26 @@ readme = "README.md"
 keywords = ["agents", "memory", "event-sourcing", "temporal", "context"]
 categories = ["data-structures", "development-tools"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = []
+compression = ["dep:lz4_flex"]
+encryption = ["dep:chacha20poly1305", "dep:getrandom", "dep:zeroize"]
 json = ["dep:serde_json"]
+mmap = ["dep:mmap-guard"]
+secure-storage = ["compression", "encryption", "mmap"]
 
 [dependencies]
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc", "zeroize"], optional = true }
+getrandom = { version = "0.4.3", optional = true }
+lz4_flex = { version = "0.14.0", default-features = false, features = ["safe-decode", "safe-encode", "std"], optional = true }
+mmap-guard = { version = "0.2.2", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", optional = true }
 weavatrix-graph = "0.5.0"
+zeroize = { version = "1.9.0", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
 agentic-memory = { version = "0.4.2", default-features = false }
@@ -49,6 +61,11 @@ harness = false
 name = "snapshot_codecs"
 harness = false
 required-features = ["json"]
+
+[[bench]]
+name = "secure_storage"
+harness = false
+required-features = ["secure-storage"]
 
 [[bench]]
 name = "extraction"

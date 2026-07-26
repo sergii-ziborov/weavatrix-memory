@@ -94,7 +94,7 @@ impl fmt::Display for MemoryError {
             Self::Io { operation, message } => {
                 write!(formatter, "I/O error during {operation}: {message}")
             }
-            Self::Codec { message } => write!(formatter, "event codec failed: {message}"),
+            Self::Codec { message } => write!(formatter, "codec failed: {message}"),
             Self::CorruptLog { offset, reason } => {
                 write!(formatter, "corrupt event log at byte {offset}: {reason}")
             }

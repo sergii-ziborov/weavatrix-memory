@@ -40,3 +40,11 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Coverage
         run: cargo llvm-cov --all-features --workspace --fail-under-lines 85
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-audit
+      - name: RustSec audit
+        run: cargo audit

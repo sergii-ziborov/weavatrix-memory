@@ -1,5 +1,17 @@
 use crate::Result;
 
+#[cfg(feature = "compression")]
+mod compression;
+#[cfg(feature = "encryption")]
+mod encryption;
+
+#[cfg(feature = "compression")]
+pub use compression::Lz4Codec;
+#[cfg(feature = "encryption")]
+pub use encryption::{
+    EncryptionKey, EncryptionKeys, NonceSource, OsNonce, StaticKey, XChaCha20Codec,
+};
+
 /// Deterministic serialization boundary used by durable stores.
 pub trait Codec<T> {
     /// Encodes one value.

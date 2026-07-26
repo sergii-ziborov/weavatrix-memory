@@ -24,6 +24,10 @@ pub use analytics::{
 pub use codec::Codec;
 #[cfg(feature = "json")]
 pub use codec::JsonCodec;
+#[cfg(feature = "compression")]
+pub use codec::Lz4Codec;
+#[cfg(feature = "encryption")]
+pub use codec::{EncryptionKey, EncryptionKeys, NonceSource, OsNonce, StaticKey, XChaCha20Codec};
 pub use context::{
     BytesTokenEstimator, ContextBundle, ContextCompiler, ContextReceipt, ContextRequest,
     FusedRetrievalHit, RetrievalChannel, RetrievalError, RetrievalHit, RetrievalProvider,

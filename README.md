@@ -50,6 +50,10 @@ query instead of mutating one opaque “current truth”.
   receipt.
 - Repository and branch-scoped projections.
 - Dependency-free, versioned compact binary projection snapshots.
+- Optional size-bounded LZ4 envelopes that keep incompressible input raw.
+- Optional XChaCha20-Poly1305 authenticated encryption with key identifiers,
+  purpose-bound AAD, and OS-generated nonces.
+- Optional guarded mmap reads for immutable snapshot generations.
 - Belief revision, reasoning-gap, drift, and consolidation analysis over the
   canonical graph.
 - Exact-evidence retrieval metrics and adapters for public memory benchmarks.
@@ -111,12 +115,20 @@ Applications needing multiple writers should provide a database-backed
 `EventStore`.
 
 Serialization is injected through the `Codec<T>` trait. The crate has no
-default codec dependency. Enabling the optional `json` feature exposes
-`JsonCodec`:
+default codec, compression, encryption, or mmap dependency. Storage features
+are opt-in:
+
+| Feature | Adds |
+| --- | --- |
+| `json` | `JsonCodec` |
+| `compression` | Size-bounded `Lz4Codec<C>` |
+| `encryption` | `XChaCha20Codec<C, K>` and key-provider contracts |
+| `mmap` | Guarded read-only snapshot mapping |
+| `secure-storage` | `compression`, `encryption`, and `mmap` |
 
 ```toml
 [dependencies]
-weavatrix-memory = { version = "0.1", features = ["json"] }
+weavatrix-memory = { version = "0.2", features = ["secure-storage"] }
 ```
 
 `FileSnapshotStore` writes immutable, position-named snapshots through a
@@ -126,6 +138,44 @@ temporary file and atomic rename. `replay_tracked` produces the exact cursor;
 facts, supersessions, and retractions in a bounds-checked versioned binary
 format. Lookup and CSR indexes are derived and validated during decode rather
 than serialized redundantly.
+
+Codec wrappers compose in encode order. Compress before encrypting:
+
+```rust,ignore
+let codec = XChaCha20Codec::new(
+    Lz4Codec::new(CompactSnapshotCodec, 512 * 1024 * 1024)?,
+    StaticKey::new("2026-q3", key_from_secret_manager)?,
+    b"projection-snapshot",
+    512 * 1024 * 1024,
+)?;
+let snapshots = FileSnapshotStore::open(
+    directory,
+    "context",
+    codec,
+    SnapshotOptions::default(),
+)?
+.with_memory_mapped_reads();
+```
+
+`Lz4Codec` records the original length and rejects it before allocation when it
+exceeds the configured limit. It stores raw bytes when compression would grow
+the payload. `XChaCha20Codec` authenticates the envelope header and caller
+context as AAD; the key identifier remains visible so an `EncryptionKeys`
+provider can retain old decryption keys during rotation. It is a raw-key API,
+not a password KDF.
+
+`StaticKey` zeroizes its owned 256-bit key on drop, and the encryption wrapper
+zeroizes temporary plaintext buffers after encode and decode. Applications must
+still source keys from a secret manager or KMS, protect any copies made before
+construction, and never use a deterministic `NonceSource` outside tests.
+Authentication failures, wrong contexts, unavailable keys, malformed envelopes,
+and oversized plaintexts fail closed.
+
+Memory mapping is opt-in because it is a workload tradeoff, not a universal
+speedup. Snapshot generations created by this store are never overwritten.
+The mmap adapter holds a shared advisory lock, but a non-cooperating external
+process can still truncate a mapped file; all writers must honor the lock and
+immutable-generation contract.
 
 `CatchUpSubscription` does not advance its checkpoint during `poll`. Consumers
 must explicitly acknowledge a delivered position, so a failed handler receives
@@ -344,6 +394,37 @@ At 10,000 nodes and 30,000 facts, the versioned compact snapshot codec measured:
 Both decoders restore the same projection and rebuild validated lookup and CSR
 indexes. The benchmark reports nine samples after two warmups.
 
+The secure-storage harness first serializes a 100,000-node, 300,000-fact
+projection into 38,828,001 compact bytes, then measures only the byte transform.
+The copy row is the `Vec` allocation/copy baseline:
+
+| Transform | Encode | Decode | Stored bytes |
+| --- | ---: | ---: | ---: |
+| Copy only | 9.649 ms | 9.594 ms | 38,828,001 |
+| LZ4 | 32.216 ms | 27.322 ms | 5,249,623 |
+| XChaCha20-Poly1305 | 70.923 ms | 71.745 ms | 38,828,059 |
+| LZ4 then XChaCha20-Poly1305 | 51.154 ms | 37.384 ms | 5,249,681 |
+
+For this repetitive evidence fixture, LZ4 reduced the snapshot by 86.5%.
+Authenticated encryption added 58 bytes. The combined path encrypts only the
+compressed payload; it remained 86.5% smaller than compact binary alone.
+
+Snapshot loads include directory selection, frame bounds and CRC32C checks,
+complete projection decode, and index validation. Buffered and mmap order is
+alternated on every sample:
+
+| Projection | Snapshot bytes | Buffered load | mmap load | Result |
+| --- | ---: | ---: | ---: | --- |
+| 10,000 nodes / 30,000 facts | 3,734,384 | 67.870 ms | 65.313 ms | mmap 3.8% faster |
+| 100,000 nodes / 300,000 facts | 38,828,001 | 709.873 ms | 730.248 ms | mmap 2.9% slower |
+
+The mmap path removes the encoded-payload heap allocation and copy, but its
+mapping, locking, and page-fault overhead kept both cached local loads in the
+same performance range and changed which path won. Buffered reads therefore
+remain the default; mmap is for reducing peak heap and enabling large
+immutable-file access, not a claimed speedup. Both tables report nine samples
+after two warmups, with transform and read order alternated between samples.
+
 The extraction harness indexes a 100,000-entity catalog containing label, alias,
 and external-ID keys, then resolves 10,000 mentions:
 
@@ -362,11 +443,13 @@ row reports the median of nine samples after two warmups.
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features --lib --tests
+cargo audit
 cargo bench --bench replay
 cargo bench --features json --bench durable
 cargo bench --bench event_store_competitors
 cargo bench --bench memory_competitors
 cargo bench --features json --bench snapshot_codecs
+cargo bench --features secure-storage --bench secure_storage
 cargo bench --bench extraction
 cargo run --release --all-features --bin weavatrix-memory-eval
 ```

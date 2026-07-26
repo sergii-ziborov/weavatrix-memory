@@ -1,15 +1,14 @@
 use super::SnapshotStore;
-use crate::{Codec, Durability, MemoryError, ProjectionSnapshot, Result, store::frame::crc32c};
+use crate::{Codec, Durability, MemoryError, ProjectionSnapshot, Result};
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    fs::{self, OpenOptions},
+    io::Write,
     marker::PhantomData,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
-const SNAPSHOT_HEADER: &[u8; 8] = b"WMEMSN01";
-const FRAME_HEADER_LEN: usize = 20;
+mod frame;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnapshotOptions {
@@ -31,6 +30,8 @@ pub struct FileSnapshotStore<P, C> {
     prefix: String,
     codec: C,
     options: SnapshotOptions,
+    #[cfg(feature = "mmap")]
+    mapped_reads: bool,
     marker: PhantomData<fn() -> P>,
 }
 
@@ -69,8 +70,22 @@ where
             prefix,
             codec,
             options,
+            #[cfg(feature = "mmap")]
+            mapped_reads: false,
             marker: PhantomData,
         })
+    }
+
+    /// Enables guarded, read-only memory mapping for snapshot loads.
+    ///
+    /// Generation files created by this store are immutable. Other processes
+    /// must still honor advisory file locks and must never truncate a mapped
+    /// generation.
+    #[cfg(feature = "mmap")]
+    #[must_use]
+    pub fn with_memory_mapped_reads(mut self) -> Self {
+        self.mapped_reads = true;
+        self
     }
 
     fn final_path(&self, position: u64) -> PathBuf {
@@ -109,32 +124,11 @@ where
     }
 
     fn read_path(&self, path: &Path, expected_position: u64) -> Result<ProjectionSnapshot<P>> {
-        let mut file = File::open(path).map_err(|error| io("open snapshot", error))?;
-        let mut header = [0_u8; FRAME_HEADER_LEN];
-        file.read_exact(&mut header)
-            .map_err(|error| io("read snapshot header", error))?;
-        if &header[..8] != SNAPSHOT_HEADER {
-            return Err(corrupt("unsupported snapshot header"));
-        }
-        let length = usize::try_from(u64::from_le_bytes(header[8..16].try_into().unwrap()))
-            .map_err(|_| corrupt("snapshot length exceeds platform capacity"))?;
-        if length > self.options.max_snapshot_bytes {
-            return Err(corrupt("snapshot exceeds configured size limit"));
-        }
-        let expected_crc = u32::from_le_bytes(header[16..20].try_into().unwrap());
-        let mut bytes = vec![0; length];
-        file.read_exact(&mut bytes)
-            .map_err(|error| io("read snapshot payload", error))?;
-        let actual_len = file
-            .metadata()
-            .map_err(|error| io("read snapshot metadata", error))?
-            .len();
-        let framed_len =
-            u64::try_from(FRAME_HEADER_LEN + length).map_err(|_| MemoryError::CapacityOverflow)?;
-        if actual_len != framed_len || crc32c(&bytes) != expected_crc {
-            return Err(corrupt("snapshot length or checksum mismatch"));
-        }
-        let snapshot = self.codec.decode(&bytes)?;
+        #[cfg(feature = "mmap")]
+        let payload = frame::read(path, self.options.max_snapshot_bytes, self.mapped_reads)?;
+        #[cfg(not(feature = "mmap"))]
+        let payload = frame::read(path, self.options.max_snapshot_bytes)?;
+        let snapshot = self.codec.decode(payload.as_ref())?;
         if snapshot.cursor.global_position != Some(expected_position) {
             return Err(corrupt("snapshot filename and cursor disagree"));
         }
@@ -149,13 +143,7 @@ where
                 reason: "encoded snapshot exceeds max_snapshot_bytes",
             });
         }
-        let length = u64::try_from(bytes.len()).map_err(|_| MemoryError::CapacityOverflow)?;
-        let mut frame = Vec::with_capacity(FRAME_HEADER_LEN + bytes.len());
-        frame.extend_from_slice(SNAPSHOT_HEADER);
-        frame.extend_from_slice(&length.to_le_bytes());
-        frame.extend_from_slice(&crc32c(&bytes).to_le_bytes());
-        frame.extend_from_slice(&bytes);
-        Ok(frame)
+        frame::encode(&bytes)
     }
 }
 
