@@ -1,6 +1,11 @@
+mod file;
+pub(crate) mod frame;
 mod in_memory;
+mod subscription;
 
+pub use file::{Durability, FileEventStore, FileStoreOptions, RecoveryPolicy};
 pub use in_memory::InMemoryStore;
+pub use subscription::{CatchUpSubscription, SubscriptionCheckpoint};
 
 use crate::{NewEvent, Result, StoredEvent, StreamId};
 
@@ -24,6 +29,24 @@ pub trait EventStore<E: Clone> {
         expected: ExpectedVersion,
         events: &[NewEvent<E>],
     ) -> Result<Vec<StoredEvent<E>>>;
+
+    /// Appends an owned batch without requiring callers to retain the inputs.
+    ///
+    /// Stores may override this to move payloads into committed envelopes and
+    /// avoid the input clone required by [`Self::append`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the same version, duplicate-event, capacity, or persistence
+    /// errors as [`Self::append`].
+    fn append_owned(
+        &mut self,
+        stream: &StreamId,
+        expected: ExpectedVersion,
+        events: Vec<NewEvent<E>>,
+    ) -> Result<Vec<StoredEvent<E>>> {
+        self.append(stream, expected, &events)
+    }
 
     fn load_stream(&self, stream: &StreamId, after: Option<u64>) -> Vec<StoredEvent<E>>;
 

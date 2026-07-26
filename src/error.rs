@@ -38,6 +38,18 @@ pub enum MemoryError {
         available: usize,
     },
     CapacityOverflow,
+    Io {
+        operation: &'static str,
+        message: String,
+    },
+    Codec {
+        message: String,
+    },
+    CorruptLog {
+        offset: u64,
+        reason: String,
+    },
+    ExternalModification,
     Graph(String),
 }
 
@@ -71,6 +83,16 @@ impl fmt::Display for MemoryError {
                 "context budget needs {required} tokens but only {available} are available"
             ),
             Self::CapacityOverflow => formatter.write_str("event store capacity exceeded"),
+            Self::Io { operation, message } => {
+                write!(formatter, "I/O error during {operation}: {message}")
+            }
+            Self::Codec { message } => write!(formatter, "event codec failed: {message}"),
+            Self::CorruptLog { offset, reason } => {
+                write!(formatter, "corrupt event log at byte {offset}: {reason}")
+            }
+            Self::ExternalModification => {
+                formatter.write_str("event log was modified by another writer")
+            }
             Self::Graph(reason) => write!(formatter, "graph projection failed: {reason}"),
         }
     }

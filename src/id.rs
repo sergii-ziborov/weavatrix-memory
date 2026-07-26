@@ -1,11 +1,11 @@
 use crate::{MemoryError, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::Arc};
 
 macro_rules! text_id {
     ($name:ident, $kind:literal) => {
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $name(String);
+        pub struct $name(Arc<str>);
 
         impl $name {
             /// Creates a stable, non-empty identifier.
@@ -18,7 +18,7 @@ macro_rules! text_id {
                 if value.is_empty() || value.trim() != value {
                     return Err(MemoryError::InvalidId { kind: $kind, value });
                 }
-                Ok(Self(value))
+                Ok(Self(value.into()))
             }
 
             #[must_use]
@@ -28,7 +28,7 @@ macro_rules! text_id {
 
             #[must_use]
             pub fn into_inner(self) -> String {
-                self.0
+                self.0.to_string()
             }
         }
 

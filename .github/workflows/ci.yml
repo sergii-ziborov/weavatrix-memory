@@ -24,8 +24,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Dependency-light default
+        run: cargo test --no-default-features --lib --tests
       - name: Test
-        run: cargo test --all-targets --all-features
+        run: cargo test --all-features --lib --tests
 
   coverage:
     runs-on: ubuntu-latest

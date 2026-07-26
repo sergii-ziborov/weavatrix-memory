@@ -257,6 +257,18 @@ fn error_messages_cover_every_public_failure_family() {
             available: 1,
         },
         MemoryError::CapacityOverflow,
+        MemoryError::Io {
+            operation: "read",
+            message: "failed".to_owned(),
+        },
+        MemoryError::Codec {
+            message: "invalid".to_owned(),
+        },
+        MemoryError::CorruptLog {
+            offset: 4,
+            reason: "checksum".to_owned(),
+        },
+        MemoryError::ExternalModification,
         MemoryError::Graph("invalid".to_owned()),
     ];
     for error in errors {

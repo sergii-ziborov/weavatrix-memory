@@ -13,4 +13,11 @@ All notable changes to this project are documented in this file.
 - Canonical projection into `weavatrix-graph`.
 - Repository-, branch-, relation-, depth-, and budget-aware context compiler.
 - Deterministic replay benchmark and cross-platform CI.
-
+- Dependency-free framed filesystem event journal with CRC32C validation.
+- Strict and incomplete-tail recovery modes.
+- Replay cursors, immutable projection snapshots, and validated resume.
+- Explicit-ack catch-up subscriptions.
+- Optional serde JSON codec behind the `json` feature.
+- Durable append, reopen/index, and projection replay benchmark.
+- Owned-batch append path for evidence envelopes without an input payload clone.
+- Evidence-equivalent in-memory comparison benchmark against `cqrs-es`.

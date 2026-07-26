@@ -89,3 +89,22 @@ fn identifier_deserialization_preserves_validation() {
     let result = serde_json::from_str::<EventId>("\" invalid \"");
     assert!(result.is_err());
 }
+
+#[test]
+fn owned_append_preserves_the_event_contract() {
+    let stream = StreamId::new("task:owned").unwrap();
+    let pending = event(
+        "event-owned",
+        10,
+        MemoryEvent::NodeUpserted {
+            node: node("node:owned", "task", "Owned append"),
+        },
+    );
+    let mut store = InMemoryStore::default();
+
+    let committed = store
+        .append_owned(&stream, ExpectedVersion::NoStream, vec![pending])
+        .unwrap();
+
+    assert_eq!(committed, store.load_stream(&stream, None));
+}

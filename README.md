@@ -6,7 +6,8 @@ events into small evidence-carrying graphs for a specific task and token budget.
 
 The crate is a standalone MIT-licensed module of Weavatrix Rust Core. Its
 deterministic core does not require an LLM, vector database, external graph
-database, async runtime, system clock, or Git executable.
+database, async runtime, system clock, or Git executable. Durable storage is
+available without requiring a database.
 
 ## Why it exists
 
@@ -26,10 +27,15 @@ query instead of mutating one opaque “current truth”.
 ## Current guarantees
 
 - Atomic per-stream append.
+- Owned-batch append path that avoids cloning caller-owned payloads.
 - Optimistic concurrency with `NoStream`, `Exact`, and `Any` expectations.
 - Globally ordered cursors and independently versioned streams.
 - Globally unique event identifiers.
 - Strict replay validation for cursor gaps and stream-version gaps.
+- Framed filesystem journal with CRC32C corruption detection.
+- Strict open by default and explicit recovery for incomplete trailing batches.
+- Immutable generation-named projection snapshots and validated resume.
+- Explicit-ack catch-up subscriptions with redelivery before acknowledgement.
 - Caller-provided timestamps and identifiers for reproducible tests.
 - Separate valid-time and known-time queries.
 - Evidence required for every memory relation and retraction.
@@ -45,7 +51,10 @@ query instead of mutating one opaque “current truth”.
 append-only events
         |
         v
-strict replay validator
+in-memory or framed file event store
+        |
+        v
+strict replay validator + optional snapshot resume
         |
         v
 bitemporal memory projection
@@ -57,9 +66,47 @@ immutable weavatrix-graph snapshot
 budgeted context compiler + receipt
 ```
 
-The in-memory store is the reference implementation. Durable filesystem,
-database, Git, lexical, semantic, and MCP adapters belong behind separate
+The in-memory and filesystem stores implement the same `EventStore` contract.
+Database, Git, lexical, semantic, and MCP adapters belong behind separate
 interfaces or higher-level Weavatrix Rust Core modules.
+
+Use `append` when the pending events must remain available to the caller. Use
+`append_owned` to transfer a batch into the store without cloning its input
+payloads.
+
+## Durable storage
+
+`FileEventStore` writes each append batch as one checksummed frame. Memory state
+is updated only after the complete frame has been written and flushed or synced.
+On reopen, the journal rebuilds and validates global positions, stream versions,
+and event identifiers.
+
+The default `RecoveryPolicy::Strict` rejects any truncated tail. Explicit
+`TruncatePartialTail` recovery removes only an incomplete final batch. Invalid
+headers, impossible sizes, malformed payloads, and checksum failures are never
+silently repaired.
+
+The file store is intentionally single-writer. It detects file-length changes
+made by another active handle, but it does not claim cross-process locking.
+Applications needing multiple writers should provide a database-backed
+`EventStore`.
+
+Serialization is injected through the `Codec<T>` trait. The crate has no
+default codec dependency. Enabling the optional `json` feature exposes
+`JsonCodec`:
+
+```toml
+[dependencies]
+weavatrix-memory = { version = "0.1", features = ["json"] }
+```
+
+`FileSnapshotStore` writes immutable, position-named snapshots through a
+temporary file and atomic rename. `replay_tracked` produces the exact cursor;
+`resume` rejects any gap between that cursor and the supplied event tail.
+
+`CatchUpSubscription` does not advance its checkpoint during `poll`. Consumers
+must explicitly acknowledge a delivered position, so a failed handler receives
+the same events again.
 
 ## Example
 
@@ -162,26 +209,51 @@ stops before exceeding the configured budget. The receipt records:
 The built-in byte estimator is deterministic and dependency-free. Applications
 that need model-exact counts implement the small `TokenEstimator` trait.
 
+## Benchmarks
+
+The repository contains executable, median-based benchmarks rather than copied
+one-off timings. On an Intel Core Ultra 7 255U, Windows 11, Rust 1.97.1,
+`--release`, a 100,000-event run produced:
+
+| Contract | Median | Throughput |
+| --- | ---: | ---: |
+| In-memory evidence append + load | 44.915 ms | 2,226,427 events/s |
+| `cqrs-es` 0.5.0 evidence append + load | 63.572 ms | 1,573,029 events/s |
+| CRC32C JSON append + `sync_data` | 438.244 ms | 228,183 events/s |
+| Durable reopen + index validation | 383.401 ms | 260,823 events/s |
+| Bitemporal projection replay | 129.592 ms | 771,654 events/s |
+
+The competitor workload carries the same event identifier, event type,
+occurred/recorded timestamps, and agent/session identities. Weavatrix
+additionally checks identifier uniqueness and optimistic concurrency and
+assigns a global cursor. Each side performs append followed by a cloned stream
+load. Fixtures are created outside the timed region; nine samples are measured
+after two warmups and the median is reported. Under this evidence-equivalent
+contract, Weavatrix used 29.3% less time than `cqrs-es` in this run. These are
+local measurements, not universal hardware claims.
+
 ## Development
 
 ```console
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets
+cargo test --all-features --lib --tests
 cargo bench --bench replay
+cargo bench --features json --bench durable
+cargo bench --bench event_store_competitors
 ```
 
-Set `WEAVATRIX_BENCH_EVENTS` to change the replay workload. The benchmark runs
-two warmups and reports the median of nine measured iterations. Competitive
-numbers are published only when workloads, outputs, hardware, build flags, and
-methodology are equivalent.
+Set `WEAVATRIX_BENCH_EVENTS` to change any workload. The in-memory replay
+benchmark runs two warmups and reports nine measured iterations. The durable
+benchmark reports five isolated append, reopen/index, and projection samples.
+The competitor benchmark reports nine isolated samples.
 
 ## Status
 
-The public API is experimental before `1.0`. The event log is append-only, but
-the reference in-memory store is not durable. Filesystem persistence,
-snapshots, subscriptions, ACL policies, Git history, MCP tools, and cross-store
-conformance tests are planned as separate layers.
+The public API is experimental before `1.0`. The filesystem journal and
+snapshots are local embedded stores, not a distributed database. Cross-process
+writer coordination, ACL policies, Git history, MCP tools, compaction, and
+database adapters remain separate layers.
 
 ## License
 
