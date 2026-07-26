@@ -1,6 +1,6 @@
 mod common;
 
-use common::{agent, entity, event, fact, node, session, ts};
+use common::{agent, entity, event, fact, node, session, simple_projection, ts};
 use std::str::FromStr;
 use weavatrix_memory::{
     AgentId, BytesTokenEstimator, Confidence, ContextCompiler, ContextRequest, EntityId, EventId,
@@ -264,44 +264,4 @@ fn error_messages_cover_every_public_failure_family() {
         let source: &dyn std::error::Error = &error;
         assert!(source.source().is_none());
     }
-}
-
-fn simple_projection() -> MemoryProjection {
-    let nodes = [
-        node("task:1", "task", "Task")
-            .in_repository("example")
-            .on_branch("main"),
-        node("file:1", "file", "File")
-            .in_repository("example")
-            .on_branch("main"),
-    ];
-    let events = vec![
-        event(
-            "event:task",
-            1,
-            MemoryEvent::NodeUpserted {
-                node: nodes[0].clone(),
-            },
-        ),
-        event(
-            "event:file",
-            1,
-            MemoryEvent::NodeUpserted {
-                node: nodes[1].clone(),
-            },
-        ),
-        event(
-            "event:fact",
-            2,
-            MemoryEvent::FactRecorded {
-                fact: fact("fact:1", "task:1", "affects", "file:1", 2, 2),
-            },
-        ),
-    ];
-    let stream = StreamId::new("stream:simple").unwrap();
-    let mut store = InMemoryStore::default();
-    store
-        .append(&stream, ExpectedVersion::NoStream, &events)
-        .unwrap();
-    replay(&store.load_all(None, usize::MAX)).unwrap()
 }

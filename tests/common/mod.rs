@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use weavatrix_memory::{
-    AgentId, EntityId, EventId, Evidence, FactId, MemoryEvent, MemoryFact, MemoryNode, NewEvent,
-    SessionId, Timestamp,
+    AgentId, EntityId, EventId, EventStore, Evidence, ExpectedVersion, FactId, InMemoryStore,
+    MemoryEvent, MemoryFact, MemoryNode, MemoryProjection, NewEvent, SessionId, StreamId,
+    Timestamp, replay,
 };
 
 pub fn ts(value: i64) -> Timestamp {
@@ -63,4 +64,44 @@ pub fn agent() -> AgentId {
 
 pub fn session() -> SessionId {
     SessionId::new("session-test").unwrap()
+}
+
+pub fn simple_projection() -> MemoryProjection {
+    let nodes = [
+        node("task:1", "task", "Task")
+            .in_repository("example")
+            .on_branch("main"),
+        node("file:1", "file", "File")
+            .in_repository("example")
+            .on_branch("main"),
+    ];
+    let events = vec![
+        event(
+            "event:task",
+            1,
+            MemoryEvent::NodeUpserted {
+                node: nodes[0].clone(),
+            },
+        ),
+        event(
+            "event:file",
+            1,
+            MemoryEvent::NodeUpserted {
+                node: nodes[1].clone(),
+            },
+        ),
+        event(
+            "event:fact",
+            2,
+            MemoryEvent::FactRecorded {
+                fact: fact("fact:1", "task:1", "affects", "file:1", 2, 2),
+            },
+        ),
+    ];
+    let stream = StreamId::new("stream:simple").unwrap();
+    let mut store = InMemoryStore::default();
+    store
+        .append(&stream, ExpectedVersion::NoStream, &events)
+        .unwrap();
+    replay(&store.load_all(None, usize::MAX)).unwrap()
 }
