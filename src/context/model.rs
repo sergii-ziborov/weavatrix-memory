@@ -54,6 +54,34 @@ impl ContextRequest {
         })
     }
 
+    /// Creates a seedless template for `ContextCompiler::compile_with_retrieval`.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a zero token budget.
+    pub fn for_retrieval(
+        valid_at: Timestamp,
+        known_at: Timestamp,
+        token_budget: usize,
+    ) -> Result<Self> {
+        if token_budget == 0 {
+            return Err(crate::MemoryError::InvalidValue {
+                field: "context.token_budget",
+                reason: "must be greater than zero",
+            });
+        }
+        Ok(Self {
+            seeds: Vec::new(),
+            valid_at,
+            known_at,
+            token_budget,
+            max_depth: 2,
+            relations: BTreeSet::new(),
+            repositories: BTreeSet::new(),
+            branches: BTreeSet::new(),
+        })
+    }
+
     #[must_use]
     pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
         self.max_depth = max_depth;

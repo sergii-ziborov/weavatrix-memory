@@ -1,0 +1,153 @@
+{
+  "name": "weavatrix-coding-agent-v1",
+  "groups": {
+    "temporal-correction": [
+      {
+        "id": "attempt:remove-date-field",
+        "text": "Attempted to remove the derived date field and use the raw timestamp directly."
+      },
+      {
+        "id": "failure:one-day-accuracy",
+        "text": "The attempt failed because one-day ranges returned inaccurate grouped results."
+      },
+      {
+        "id": "decision:projection-date-field",
+        "text": "The accepted replacement keeps the date field and adds an explicit projection before grouping."
+      },
+      {
+        "id": "test:one-day-range",
+        "text": "The regression test asserts exact one-day range boundaries and grouped totals."
+      },
+      {
+        "id": "observation:unrelated-cache",
+        "text": "A cache timeout was observed in a separate worker."
+      }
+    ],
+    "cross-component-change": [
+      {
+        "id": "endpoint:widget-shape",
+        "text": "The widget shape endpoint returns grouped series to its consumers."
+      },
+      {
+        "id": "symbol:shape-result",
+        "text": "The shaping symbol converts database rows into the endpoint response."
+      },
+      {
+        "id": "consumer:dashboard",
+        "text": "The dashboard consumer expects every requested dimension in the grouped response."
+      },
+      {
+        "id": "table:aggregate-events",
+        "text": "The aggregate events table supplies dimensions and measures to the shaping symbol."
+      },
+      {
+        "id": "test:three-dimensions",
+        "text": "The contract test fails when the third requested dimension is lost."
+      },
+      {
+        "id": "handoff:shape-fix",
+        "text": "The handoff says to preserve all dimensions and rerun the endpoint contract test."
+      }
+    ],
+    "branch-aware-history": [
+      {
+        "id": "fact:main-current",
+        "text": "On main, the parser accepts the current schema and rejects the legacy alias."
+      },
+      {
+        "id": "fact:release-legacy",
+        "text": "On the release branch, persisted documents still use the legacy alias."
+      },
+      {
+        "id": "decision:compatibility",
+        "text": "Hide the alias from new public requests but retain read compatibility for persisted documents."
+      },
+      {
+        "id": "failure:destructive-removal",
+        "text": "Removing the alias from runtime deserialization broke existing saved documents."
+      },
+      {
+        "id": "test:persisted-document",
+        "text": "The compatibility test loads a legacy persisted document and writes only the current schema."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "coding-001",
+      "group_id": "temporal-correction",
+      "category": "failed_attempt",
+      "query": "Can the derived date field be removed in favor of the raw timestamp?",
+      "relevant_ids": [
+        "attempt:remove-date-field",
+        "failure:one-day-accuracy",
+        "decision:projection-date-field"
+      ]
+    },
+    {
+      "id": "coding-002",
+      "group_id": "temporal-correction",
+      "category": "correction",
+      "query": "What replaced the inaccurate one-day grouping attempt?",
+      "relevant_ids": [
+        "decision:projection-date-field",
+        "test:one-day-range"
+      ]
+    },
+    {
+      "id": "coding-003",
+      "group_id": "cross-component-change",
+      "category": "blast_radius",
+      "query": "What must be checked when changing grouped widget result shaping?",
+      "relevant_ids": [
+        "endpoint:widget-shape",
+        "symbol:shape-result",
+        "consumer:dashboard",
+        "test:three-dimensions"
+      ]
+    },
+    {
+      "id": "coding-004",
+      "group_id": "cross-component-change",
+      "category": "provenance",
+      "query": "Which evidence proves that the third dimension must be preserved?",
+      "relevant_ids": [
+        "test:three-dimensions",
+        "handoff:shape-fix"
+      ]
+    },
+    {
+      "id": "coding-005",
+      "group_id": "cross-component-change",
+      "category": "cross_component",
+      "query": "Trace the data path from storage through code to the dashboard.",
+      "relevant_ids": [
+        "table:aggregate-events",
+        "symbol:shape-result",
+        "endpoint:widget-shape",
+        "consumer:dashboard"
+      ]
+    },
+    {
+      "id": "coding-006",
+      "group_id": "branch-aware-history",
+      "category": "branch_awareness",
+      "query": "Why can the legacy alias not be deleted from runtime deserialization?",
+      "relevant_ids": [
+        "fact:release-legacy",
+        "failure:destructive-removal",
+        "decision:compatibility"
+      ]
+    },
+    {
+      "id": "coding-007",
+      "group_id": "branch-aware-history",
+      "category": "schema_compatibility",
+      "query": "How should new requests and old persisted documents treat the alias?",
+      "relevant_ids": [
+        "decision:compatibility",
+        "test:persisted-document"
+      ]
+    }
+  ]
+}

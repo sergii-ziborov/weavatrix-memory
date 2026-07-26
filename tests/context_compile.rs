@@ -87,3 +87,76 @@ fn compiler_never_silently_exceeds_seed_budget() {
         .unwrap_err();
     assert!(matches!(error, MemoryError::BudgetTooSmall { .. }));
 }
+
+#[test]
+fn indexed_compiler_keeps_edges_between_depth_boundary_nodes() {
+    let nodes = ["node:a", "node:b", "node:c"].map(|id| node(id, "observation", id));
+    let events = vec![
+        event(
+            "event:a",
+            1,
+            MemoryEvent::NodeUpserted {
+                node: nodes[0].clone(),
+            },
+        ),
+        event(
+            "event:b",
+            1,
+            MemoryEvent::NodeUpserted {
+                node: nodes[1].clone(),
+            },
+        ),
+        event(
+            "event:c",
+            1,
+            MemoryEvent::NodeUpserted {
+                node: nodes[2].clone(),
+            },
+        ),
+        event(
+            "event:ab",
+            2,
+            MemoryEvent::FactRecorded {
+                fact: fact("fact:ab", "node:a", "supports", "node:b", 2, 2),
+            },
+        ),
+        event(
+            "event:ac",
+            2,
+            MemoryEvent::FactRecorded {
+                fact: fact("fact:ac", "node:a", "supports", "node:c", 2, 2),
+            },
+        ),
+        event(
+            "event:bc",
+            2,
+            MemoryEvent::FactRecorded {
+                fact: fact("fact:bc", "node:b", "supports", "node:c", 2, 2),
+            },
+        ),
+    ];
+    let mut store = InMemoryStore::default();
+    store
+        .append(
+            &StreamId::new("boundary").unwrap(),
+            ExpectedVersion::NoStream,
+            &events,
+        )
+        .unwrap();
+    let projection = replay(&store.load_all(None, usize::MAX)).unwrap();
+    let request = ContextRequest::new(
+        vec![EntityId::new("node:a").unwrap()],
+        ts(10),
+        ts(10),
+        10_000,
+    )
+    .unwrap()
+    .with_max_depth(1);
+
+    let bundle = ContextCompiler::default()
+        .compile(&projection, &request)
+        .unwrap();
+
+    assert_eq!(bundle.graph.node_count(), 3);
+    assert_eq!(bundle.graph.edge_count(), 3);
+}

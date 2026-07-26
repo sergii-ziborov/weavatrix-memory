@@ -40,14 +40,29 @@ query instead of mutating one opaque “current truth”.
 - Separate valid-time and known-time queries.
 - Evidence required for every memory relation and retraction.
 - Explicit supersession without deleting historical facts.
+- Validated bulk projection with compact dual-CSR incident indexes.
 - Deterministic projection into canonical `weavatrix-graph` snapshots.
+- Provider-neutral literal, lexical, semantic, and hybrid retrieval with
+  deterministic reciprocal-rank fusion.
+- Provider-neutral auto-extraction with strict, scope-aware entity linking and
+  idempotent event plans.
 - Hard context budget with a replaceable token estimator and compilation
   receipt.
 - Repository and branch-scoped projections.
+- Dependency-free, versioned compact binary projection snapshots.
+- Belief revision, reasoning-gap, drift, and consolidation analysis over the
+  canonical graph.
+- Exact-evidence retrieval metrics and adapters for public memory benchmarks.
 
 ## Architecture
 
 ```text
+source / AST / issue / agent observation
+        |
+        v
+ExtractionProvider -> strict EntityLinker -> reviewed event plan
+        |
+        v
 append-only events
         |
         v
@@ -59,8 +74,12 @@ strict replay validator + optional snapshot resume
         v
 bitemporal memory projection
         |
+        +<-- lexical / semantic RetrievalProvider
+        |
         v
 immutable weavatrix-graph snapshot
+        |
+        +--> belief / gap / drift / consolidation reports
         |
         v
 budgeted context compiler + receipt
@@ -103,6 +122,10 @@ weavatrix-memory = { version = "0.1", features = ["json"] }
 `FileSnapshotStore` writes immutable, position-named snapshots through a
 temporary file and atomic rename. `replay_tracked` produces the exact cursor;
 `resume` rejects any gap between that cursor and the supplied event tail.
+`CompactSnapshotCodec` stores the complete replay cursor, temporal revisions,
+facts, supersessions, and retractions in a bounds-checked versioned binary
+format. Lookup and CSR indexes are derived and validated during decode rather
+than serialized redundantly.
 
 `CatchUpSubscription` does not advance its checkpoint during `poll`. Consumers
 must explicitly acknowledge a delivered position, so a failed handler receives
@@ -194,11 +217,38 @@ Facts retain:
 - one or more evidence records;
 - the fact they supersede, when applicable.
 
+## Auto-extraction and entity linking
+
+`ExtractionProvider` isolates parsing or model inference from the deterministic
+memory core. Providers return typed local mentions, relation candidates,
+confidence, optional byte spans, stable IDs, external IDs, and candidate hints.
+`AutoExtractionEngine` then:
+
+- validates UTF-8 spans, temporal intervals, identifiers, and provider identity;
+- links by stable ID, external ID, scoped normalized label, alias, or provider
+  hint;
+- applies an explicit minimum score and winner margin;
+- reports ambiguous and unresolved endpoints instead of guessing;
+- creates deterministic node and fact IDs for unmatched entities;
+- preserves source, locator, digest, provider, span, agent, session, and
+  confidence provenance;
+- returns a non-mutating event plan suitable for review and atomic append.
+
+`EntityLinker` can be built once from a temporal `MemoryView` and reused for a
+batch. This keeps AST, issue-tracker, model, and future semantic adapters outside
+the core while giving all of them the same validation and linking contract.
+
 ## Context compilation
 
-`ContextCompiler` starts from exact entity identifiers, traverses the selected
-relations in both directions, ranks nearby evidence deterministically, and
-stops before exceeding the configured budget. The receipt records:
+`ContextCompiler` can start from exact entity identifiers or from one or more
+`RetrievalProvider` implementations. A provider returns exact entity IDs from
+literal, lexical, semantic, or hybrid search. Integer reciprocal-rank fusion
+combines their ranks without pretending BM25 and vector scores share a scale;
+the result retains provider, channel, rank, and raw-score provenance.
+
+After seed resolution, the compiler traverses selected relations in both
+directions, ranks nearby evidence deterministically, and stops before exceeding
+the configured budget. The receipt records:
 
 - projection time and source event position;
 - estimator identity and estimated usage;
@@ -209,6 +259,40 @@ stops before exceeding the configured budget. The receipt records:
 The built-in byte estimator is deterministic and dependency-free. Applications
 that need model-exact counts implement the small `TokenEstimator` trait.
 
+## Memory analytics
+
+`MemoryAnalytics` operates on bitemporal projections and canonical
+`weavatrix-graph` topology:
+
+- belief revision finds explicit corrections and competing targets, then
+  traces their downstream confidence cascade;
+- reasoning-gap analysis reports unsupported decisions, single-source
+  inferences, weak foundations, stale evidence, and unstable revision chains;
+- drift reconstructs immutable belief timelines and correction rates;
+- consolidation returns a deterministic plan for duplicate supersession,
+  orphan review, and revision checkpoints without deleting history.
+
+## Accuracy evaluation
+
+The provider-neutral evaluator reports Hit@K, Recall@K, nDCG@K, and MRR from
+exact evidence identifiers. The repository includes adapters for the public
+[LoCoMo](https://github.com/snap-research/locomo) and
+[LongMemEval](https://github.com/xiaowu0162/LongMemEval) formats plus a
+coding-agent regression suite. See [benchmark instructions](benchmarks/README.md).
+
+The full official files were parsed successfully in the local verification
+run: 1,978 evidence-bearing `LoCoMo` questions and 470 non-abstention
+LongMemEval-S questions. The dependency-free literal smoke baseline produced:
+
+| Dataset | Hit@1 | Hit@5 | Recall@5 | MRR |
+| --- | ---: | ---: | ---: | ---: |
+| `LoCoMo` | 0.2230 | 0.3918 | 0.3559 | 0.2980 |
+| LongMemEval-S cleaned | 0.6787 | 0.8894 | 0.7883 | 0.7679 |
+| Coding-agent v1 (7 cases) | 0.8571 | 1.0000 | 1.0000 | 0.9286 |
+
+These are adapter smoke results, not claims about the future
+`weavatrix-search` or semantic/vector provider.
+
 ## Benchmarks
 
 The repository contains executable, median-based benchmarks rather than copied
@@ -217,8 +301,8 @@ one-off timings. On an Intel Core Ultra 7 255U, Windows 11, Rust 1.97.1,
 
 | Contract | Median | Throughput |
 | --- | ---: | ---: |
-| In-memory evidence append + load | 44.915 ms | 2,226,427 events/s |
-| `cqrs-es` 0.5.0 evidence append + load | 63.572 ms | 1,573,029 events/s |
+| In-memory evidence append + load | 112.936 ms | 885,459 events/s |
+| `cqrs-es` 0.5.0 evidence append + load | 186.668 ms | 535,709 events/s |
 | CRC32C JSON append + `sync_data` | 438.244 ms | 228,183 events/s |
 | Durable reopen + index validation | 383.401 ms | 260,823 events/s |
 | Bitemporal projection replay | 129.592 ms | 771,654 events/s |
@@ -229,8 +313,48 @@ additionally checks identifier uniqueness and optimistic concurrency and
 assigns a global cursor. Each side performs append followed by a cloned stream
 load. Fixtures are created outside the timed region; nine samples are measured
 after two warmups and the median is reported. Under this evidence-equivalent
-contract, Weavatrix used 29.3% less time than `cqrs-es` in this run. These are
+contract, Weavatrix used 39.5% less time than `cqrs-es` in this run. These are
 local measurements, not universal hardware claims.
+
+The graph-memory harness also compares against `agentic-memory` 0.4.2. At
+100,000 nodes and 300,000 edges:
+
+| Contract | Weavatrix | `agentic-memory` | Result |
+| --- | ---: | ---: | --- |
+| Depth-2 context, identical 13-node/33-edge output | 0.293 ms | 6.750 ms | Weavatrix 23.0x faster |
+| Validated `try_from_parts` + dual CSR | 133.915 ms | 93.103 ms | `agentic-memory` 1.44x faster |
+| Strict replay of 400,000 envelopes | 1,248.583 ms | n/a | Different contract |
+
+The context row is output-equivalent. The bulk-construction row compares each
+crate's parts constructor, but the contracts are still not identical:
+Weavatrix validates node and fact domains, evidence, uniqueness, endpoints, and
+supersession before building both CSR directions. The harness records that
+`agentic-memory::MemoryGraph::from_parts` accepts a dangling edge. The new bulk
+path reduced the measured construction gap from 18.2x to 1.44x without dropping
+those checks; strict event replay remains a separately reported operation.
+
+At 10,000 nodes and 30,000 facts, the versioned compact snapshot codec measured:
+
+| Contract | Compact binary | JSON | Result |
+| --- | ---: | ---: | --- |
+| Encode | 11.647 ms | 36.878 ms | Compact 3.17x faster |
+| Decode and validate indexes | 121.508 ms | 186.702 ms | Compact 1.54x faster |
+| Snapshot size | 3,824,378 bytes | 9,543,533 bytes | Compact 59.9% smaller |
+
+Both decoders restore the same projection and rebuild validated lookup and CSR
+indexes. The benchmark reports nine samples after two warmups.
+
+The extraction harness indexes a 100,000-entity catalog containing label, alias,
+and external-ID keys, then resolves 10,000 mentions:
+
+| Contract | Median | Throughput |
+| --- | ---: | ---: |
+| Catalog build, 100,000 entities | 449.895 ms | 222,274 entities/s |
+| Reused indexed linker, 10,000 mentions | 36.683 ms | 272,604 links/s |
+| Validated extraction event plan, 10,000 mentions | 69.444 ms | 144,001 mentions/s |
+
+Provider output and fixtures are created outside the indexed-link timing. Each
+row reports the median of nine samples after two warmups.
 
 ## Development
 
@@ -241,12 +365,18 @@ cargo test --all-features --lib --tests
 cargo bench --bench replay
 cargo bench --features json --bench durable
 cargo bench --bench event_store_competitors
+cargo bench --bench memory_competitors
+cargo bench --features json --bench snapshot_codecs
+cargo bench --bench extraction
+cargo run --release --all-features --bin weavatrix-memory-eval
 ```
 
 Set `WEAVATRIX_BENCH_EVENTS` to change any workload. The in-memory replay
 benchmark runs two warmups and reports nine measured iterations. The durable
 benchmark reports five isolated append, reopen/index, and projection samples.
-The competitor benchmark reports nine isolated samples.
+The competitor benchmarks report nine samples after two warmups. Set
+`WEAVATRIX_BENCH_NODES` and `WEAVATRIX_BENCH_EDGES_PER_NODE` for the graph
+workload.
 
 ## Status
 

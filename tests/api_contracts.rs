@@ -269,6 +269,14 @@ fn error_messages_cover_every_public_failure_family() {
             reason: "checksum".to_owned(),
         },
         MemoryError::ExternalModification,
+        MemoryError::Retrieval {
+            provider: "search".to_owned(),
+            message: "offline".to_owned(),
+        },
+        MemoryError::Extraction {
+            provider: "extractor".to_owned(),
+            message: "invalid output".to_owned(),
+        },
         MemoryError::Graph("invalid".to_owned()),
     ];
     for error in errors {

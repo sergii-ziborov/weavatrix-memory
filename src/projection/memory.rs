@@ -1,10 +1,19 @@
+mod binary;
+mod index;
+mod parts;
+mod state;
+
 use super::Projection;
 use crate::{
     EntityId, FactId, MemoryError, MemoryEvent, MemoryFact, MemoryNode, MemoryView, Result,
     StoredEvent, Timestamp,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use state::{NodeHistory, NodeRevision, Retraction, Supersession};
+use std::collections::BTreeSet;
+
+pub use binary::CompactSnapshotCodec;
+pub use state::MemoryProjection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectionClock {
@@ -17,35 +26,6 @@ impl ProjectionClock {
     pub const fn new(valid_at: Timestamp, known_at: Timestamp) -> Self {
         Self { valid_at, known_at }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct NodeRevision {
-    node: MemoryNode,
-    recorded_at: Timestamp,
-    position: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Supersession {
-    replacement: FactId,
-    valid_from: Timestamp,
-    recorded_at: Timestamp,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Retraction {
-    valid_until: Timestamp,
-    recorded_at: Timestamp,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryProjection {
-    nodes: BTreeMap<EntityId, Vec<NodeRevision>>,
-    facts: BTreeMap<FactId, MemoryFact>,
-    supersessions: BTreeMap<FactId, Supersession>,
-    retractions: BTreeMap<FactId, Retraction>,
-    last_global_position: Option<u64>,
 }
 
 impl MemoryProjection {
@@ -61,21 +41,49 @@ impl MemoryProjection {
             .map(|change| &change.replacement)
     }
 
+    pub(crate) fn visible_node(&self, id: &EntityId, known_at: Timestamp) -> Option<&MemoryNode> {
+        self.node_lookup
+            .get(id)
+            .and_then(|index| visible_revision(&self.nodes[*index], known_at))
+    }
+
+    pub(crate) fn fact(&self, id: &FactId) -> Option<&MemoryFact> {
+        self.fact_lookup.get(id).map(|index| &self.facts[*index])
+    }
+
+    pub(crate) fn all_facts(&self) -> &[MemoryFact] {
+        &self.facts
+    }
+
+    pub(crate) fn incident_fact_ids(&self, id: &EntityId) -> impl Iterator<Item = &FactId> + '_ {
+        self.node_lookup
+            .get(id)
+            .into_iter()
+            .flat_map(|index| {
+                let stable = &self.incident_facts
+                    [self.incident_offsets[*index]..self.incident_offsets[*index + 1]];
+                stable
+                    .iter()
+                    .chain(self.incident_delta.get(index).into_iter().flatten())
+            })
+            .map(|index| &self.facts[*index].id)
+    }
+
     #[must_use]
     pub fn view(&self, clock: ProjectionClock) -> MemoryView {
         let nodes = self
             .nodes
-            .values()
+            .iter()
             .filter_map(|revisions| visible_revision(revisions, clock.known_at))
             .cloned()
             .collect::<Vec<_>>();
         let visible_ids = nodes
             .iter()
             .map(|node| node.id.clone())
-            .collect::<std::collections::BTreeSet<_>>();
+            .collect::<BTreeSet<_>>();
         let facts = self
             .facts
-            .values()
+            .iter()
             .filter(|fact| {
                 visible_ids.contains(&fact.source)
                     && visible_ids.contains(&fact.target)
@@ -86,7 +94,7 @@ impl MemoryProjection {
         MemoryView { nodes, facts }
     }
 
-    fn fact_is_active(&self, fact: &MemoryFact, clock: ProjectionClock) -> bool {
+    pub(crate) fn fact_is_active(&self, fact: &MemoryFact, clock: ProjectionClock) -> bool {
         if fact.recorded_at > clock.known_at || fact.valid_from > clock.valid_at {
             return false;
         }
@@ -106,46 +114,44 @@ impl MemoryProjection {
         })
     }
 
-    fn apply_node(&mut self, event: &StoredEvent<MemoryEvent>, node: &MemoryNode) -> Result<()> {
-        node.validate()?;
-        self.nodes
-            .entry(node.id.clone())
-            .or_default()
-            .push(NodeRevision {
-                node: node.clone(),
-                recorded_at: event.metadata.recorded_at,
-                position: event.metadata.global_position,
-            });
+    fn insert_node(&mut self, revision: NodeRevision) -> Result<()> {
+        revision.node.validate()?;
+        if let Some(index) = self.node_lookup.get(&revision.node.id).copied() {
+            self.nodes[index].later.push(revision);
+        } else {
+            let index = self.nodes.len();
+            self.node_lookup.insert(revision.node.id.clone(), index);
+            self.nodes.push(NodeHistory::new(revision));
+            let offset = *self.incident_offsets.last().unwrap_or(&0);
+            self.incident_offsets.push(offset);
+        }
         Ok(())
     }
 
-    fn apply_fact(&mut self, event: &StoredEvent<MemoryEvent>, fact: &MemoryFact) -> Result<()> {
+    fn insert_fact(&mut self, fact: MemoryFact) -> Result<()> {
         fact.validate()?;
-        if fact.recorded_at != event.metadata.recorded_at
-            || fact.agent_id != event.metadata.agent_id
-            || fact.session_id != event.metadata.session_id
-        {
-            return Err(MemoryError::InvalidValue {
-                field: "fact.envelope",
-                reason: "fact provenance must match its event envelope",
-            });
-        }
-        self.require_entity(&fact.source)?;
-        self.require_entity(&fact.target)?;
-        if self.facts.contains_key(&fact.id) {
+        let source = self.require_entity(&fact.source)?;
+        let target = self.require_entity(&fact.target)?;
+        if self.fact_lookup.contains_key(&fact.id) {
             return Err(MemoryError::ConflictingFact {
                 id: fact.id.to_string(),
             });
         }
         if let Some(prior) = &fact.supersedes {
-            self.apply_supersession(prior, fact)?;
+            self.apply_supersession(prior, &fact)?;
         }
-        self.facts.insert(fact.id.clone(), fact.clone());
+        let index = self.facts.len();
+        self.fact_lookup.insert(fact.id.clone(), index);
+        self.incident_delta.entry(source).or_default().push(index);
+        if target != source {
+            self.incident_delta.entry(target).or_default().push(index);
+        }
+        self.facts.push(fact);
         Ok(())
     }
 
     fn apply_supersession(&mut self, prior: &FactId, fact: &MemoryFact) -> Result<()> {
-        if !self.facts.contains_key(prior) {
+        if !self.fact_lookup.contains_key(prior) {
             return Err(MemoryError::MissingFact {
                 id: prior.to_string(),
             });
@@ -166,12 +172,11 @@ impl MemoryProjection {
         Ok(())
     }
 
-    fn require_entity(&self, id: &EntityId) -> Result<()> {
-        if self.nodes.contains_key(id) {
-            Ok(())
-        } else {
-            Err(MemoryError::MissingEntity { id: id.to_string() })
-        }
+    fn require_entity(&self, id: &EntityId) -> Result<usize> {
+        self.node_lookup
+            .get(id)
+            .copied()
+            .ok_or_else(|| MemoryError::MissingEntity { id: id.to_string() })
     }
 
     fn apply_retraction(
@@ -181,12 +186,9 @@ impl MemoryProjection {
         valid_until: Timestamp,
         evidence: &[crate::Evidence],
     ) -> Result<()> {
-        let fact = self
-            .facts
-            .get(fact_id)
-            .ok_or_else(|| MemoryError::MissingFact {
-                id: fact_id.to_string(),
-            })?;
+        let fact = self.fact(fact_id).ok_or_else(|| MemoryError::MissingFact {
+            id: fact_id.to_string(),
+        })?;
         if valid_until <= fact.valid_from {
             return Err(MemoryError::InvalidValue {
                 field: "retraction.valid_until",
@@ -220,8 +222,23 @@ impl Projection<MemoryEvent> for MemoryProjection {
             });
         }
         match &event.payload {
-            MemoryEvent::NodeUpserted { node } => self.apply_node(event, node)?,
-            MemoryEvent::FactRecorded { fact } => self.apply_fact(event, fact)?,
+            MemoryEvent::NodeUpserted { node } => self.insert_node(NodeRevision {
+                node: node.clone(),
+                recorded_at: event.metadata.recorded_at,
+                position: event.metadata.global_position,
+            })?,
+            MemoryEvent::FactRecorded { fact } => {
+                if fact.recorded_at != event.metadata.recorded_at
+                    || fact.agent_id != event.metadata.agent_id
+                    || fact.session_id != event.metadata.session_id
+                {
+                    return Err(MemoryError::InvalidValue {
+                        field: "fact.envelope",
+                        reason: "fact provenance must match its event envelope",
+                    });
+                }
+                self.insert_fact(fact.clone())?;
+            }
             MemoryEvent::FactRetracted {
                 fact_id,
                 valid_until,
@@ -233,9 +250,9 @@ impl Projection<MemoryEvent> for MemoryProjection {
     }
 }
 
-fn visible_revision(revisions: &[NodeRevision], known_at: Timestamp) -> Option<&MemoryNode> {
-    revisions
-        .iter()
+fn visible_revision(history: &NodeHistory, known_at: Timestamp) -> Option<&MemoryNode> {
+    core::iter::once(&history.first)
+        .chain(&history.later)
         .filter(|revision| revision.recorded_at <= known_at)
         .max_by_key(|revision| (revision.recorded_at, revision.position))
         .map(|revision| &revision.node)

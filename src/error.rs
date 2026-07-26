@@ -50,6 +50,14 @@ pub enum MemoryError {
         reason: String,
     },
     ExternalModification,
+    Retrieval {
+        provider: String,
+        message: String,
+    },
+    Extraction {
+        provider: String,
+        message: String,
+    },
     Graph(String),
 }
 
@@ -93,6 +101,15 @@ impl fmt::Display for MemoryError {
             Self::ExternalModification => {
                 formatter.write_str("event log was modified by another writer")
             }
+            Self::Retrieval { provider, message } => {
+                write!(formatter, "retrieval provider {provider} failed: {message}")
+            }
+            Self::Extraction { provider, message } => {
+                write!(
+                    formatter,
+                    "extraction provider {provider} failed: {message}"
+                )
+            }
             Self::Graph(reason) => write!(formatter, "graph projection failed: {reason}"),
         }
     }
@@ -103,5 +120,23 @@ impl std::error::Error for MemoryError {}
 impl From<weavatrix_graph::GraphError> for MemoryError {
     fn from(value: weavatrix_graph::GraphError) -> Self {
         Self::Graph(value.to_string())
+    }
+}
+
+impl From<crate::RetrievalError> for MemoryError {
+    fn from(value: crate::RetrievalError) -> Self {
+        Self::Retrieval {
+            provider: value.provider,
+            message: value.message,
+        }
+    }
+}
+
+impl From<crate::ExtractionError> for MemoryError {
+    fn from(value: crate::ExtractionError) -> Self {
+        Self::Extraction {
+            provider: value.provider,
+            message: value.message,
+        }
     }
 }
