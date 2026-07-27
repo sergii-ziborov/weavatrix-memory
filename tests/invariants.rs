@@ -3,7 +3,7 @@ mod common;
 use common::{event, fact, node, ts};
 use weavatrix_memory::{
     EventStore, ExpectedVersion, FactId, InMemoryStore, MemoryError, MemoryEvent, MemoryProjection,
-    ProjectionClock, StoredEvent, StreamId, replay,
+    ProjectionClock, StoredEvent, StreamId, replay, replay_owned,
 };
 
 #[test]
@@ -35,8 +35,10 @@ fn generated_multi_stream_history_round_trips() {
         let decoded: Vec<StoredEvent<MemoryEvent>> = serde_json::from_slice(&json).unwrap();
         let original: MemoryProjection = replay(&events).unwrap();
         let round_trip: MemoryProjection = replay(&decoded).unwrap();
+        let owned: MemoryProjection = replay_owned(decoded).unwrap();
         let clock = ProjectionClock::new(ts(100), ts(100));
         assert_eq!(original.view(clock), round_trip.view(clock));
+        assert_eq!(original.view(clock), owned.view(clock));
         assert_eq!(original.view(clock).nodes.len(), count);
     }
 }

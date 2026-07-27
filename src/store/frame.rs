@@ -179,16 +179,33 @@ fn read_u64(bytes: &[u8], cursor: &mut usize) -> Option<u64> {
     Some(value)
 }
 
+const CRC32C_TABLE: [u32; 256] = crc32c_table();
+
 pub(crate) fn crc32c(bytes: &[u8]) -> u32 {
     let mut crc = !0_u32;
     for byte in bytes {
-        crc ^= u32::from(*byte);
-        for _ in 0..8 {
-            let mask = 0_u32.wrapping_sub(crc & 1);
-            crc = (crc >> 1) ^ (0x82f6_3b78 & mask);
-        }
+        let index = usize::from(crc.to_le_bytes()[0] ^ byte);
+        crc = (crc >> 8) ^ CRC32C_TABLE[index];
     }
     !crc
+}
+
+#[allow(clippy::cast_possible_truncation)]
+const fn crc32c_table() -> [u32; 256] {
+    let mut table = [0_u32; 256];
+    let mut index = 0;
+    while index < table.len() {
+        let mut crc = index as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            let mask = 0_u32.wrapping_sub(crc & 1);
+            crc = (crc >> 1) ^ (0x82f6_3b78 & mask);
+            bit += 1;
+        }
+        table[index] = crc;
+        index += 1;
+    }
+    table
 }
 
 fn corrupt(offset: u64, reason: &str) -> MemoryError {
@@ -208,8 +225,30 @@ fn io(operation: &'static str, error: std::io::Error) -> MemoryError {
 
 #[cfg(test)]
 mod tests {
+    fn reference_crc32c(bytes: &[u8]) -> u32 {
+        let mut crc = !0_u32;
+        for byte in bytes {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = 0_u32.wrapping_sub(crc & 1);
+                crc = (crc >> 1) ^ (0x82f6_3b78 & mask);
+            }
+        }
+        !crc
+    }
+
     #[test]
     fn crc32c_matches_the_standard_check_value() {
         assert_eq!(super::crc32c(b"123456789"), 0xe306_9283);
+    }
+
+    #[test]
+    fn table_crc32c_matches_the_reference_for_varied_inputs() {
+        for length in 0_usize..=1_024 {
+            let bytes = (0..length)
+                .map(|index| index.to_le_bytes()[0].wrapping_mul(31).wrapping_add(17))
+                .collect::<Vec<_>>();
+            assert_eq!(super::crc32c(&bytes), reference_crc32c(&bytes));
+        }
     }
 }

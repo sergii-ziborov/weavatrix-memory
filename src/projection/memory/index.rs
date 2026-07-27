@@ -1,7 +1,7 @@
 use crate::{EntityId, FactId};
 use std::{
     collections::{HashMap, hash_map::RandomState},
-    hash::{BuildHasher, BuildHasherDefault, Hash, Hasher},
+    hash::{BuildHasher, BuildHasherDefault, Hasher},
 };
 
 pub(super) trait TextId: Clone + Eq {
@@ -17,26 +17,6 @@ impl TextId for EntityId {
 impl TextId for FactId {
     fn text(&self) -> &str {
         self.as_str()
-    }
-}
-
-#[derive(Debug, Clone)]
-struct IndexedId<I> {
-    id: I,
-    hash: u64,
-}
-
-impl<I: Eq> PartialEq for IndexedId<I> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl<I: Eq> Eq for IndexedId<I> {}
-
-impl<I> Hash for IndexedId<I> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
     }
 }
 
@@ -57,12 +37,14 @@ impl Hasher for IdentityHasher {
     }
 }
 
-type FastMap<I> = HashMap<IndexedId<I>, usize, BuildHasherDefault<IdentityHasher>>;
+type FastMap<I> = HashMap<u64, (I, usize), BuildHasherDefault<IdentityHasher>>;
+type CollisionMap<I> = HashMap<u64, Vec<(I, usize)>, BuildHasherDefault<IdentityHasher>>;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdIndex<I> {
     seed: u64,
     entries: FastMap<I>,
+    collisions: CollisionMap<I>,
 }
 
 impl<I: TextId> IdIndex<I> {
@@ -73,6 +55,7 @@ impl<I: TextId> IdIndex<I> {
         Self {
             seed: hasher.finish(),
             entries: FastMap::with_capacity_and_hasher(capacity, BuildHasherDefault::default()),
+            collisions: CollisionMap::default(),
         }
     }
 
@@ -85,7 +68,21 @@ impl<I: TextId> IdIndex<I> {
     }
 
     pub(super) fn get(&self, id: &I) -> Option<&usize> {
-        self.entries.get(&self.key(id))
+        let hash = self.hash(id);
+        self.get_hashed(id, hash)
+    }
+
+    fn get_hashed(&self, id: &I, hash: u64) -> Option<&usize> {
+        self.entries
+            .get(&hash)
+            .filter(|(candidate, _)| candidate == id)
+            .map(|(_, index)| index)
+            .or_else(|| {
+                self.collisions
+                    .get(&hash)
+                    .and_then(|bucket| bucket.iter().find(|(candidate, _)| candidate == id))
+                    .map(|(_, index)| index)
+            })
     }
 
     pub(super) fn insert(&mut self, id: I, index: usize) -> Option<usize> {
@@ -94,18 +91,28 @@ impl<I: TextId> IdIndex<I> {
     }
 
     pub(super) fn insert_hashed(&mut self, id: I, index: usize, hash: u64) -> Option<usize> {
-        self.entries.insert(IndexedId { id, hash }, index)
+        if let Some((candidate, prior)) = self.entries.get_mut(&hash) {
+            if candidate == &id {
+                return Some(core::mem::replace(prior, index));
+            }
+            let bucket = self.collisions.entry(hash).or_default();
+            if let Some((_, prior)) = bucket.iter_mut().find(|(candidate, _)| candidate == &id) {
+                return Some(core::mem::replace(prior, index));
+            }
+            bucket.push((id, index));
+            return None;
+        }
+        if let Some(bucket) = self.collisions.get_mut(&hash)
+            && let Some((_, prior)) = bucket.iter_mut().find(|(candidate, _)| candidate == &id)
+        {
+            return Some(core::mem::replace(prior, index));
+        }
+        self.entries.insert(hash, (id, index));
+        None
     }
 
     pub(super) fn hash(&self, id: &I) -> u64 {
         fingerprint(self.seed, id.text().as_bytes())
-    }
-
-    fn key(&self, id: &I) -> IndexedId<I> {
-        IndexedId {
-            id: id.clone(),
-            hash: fingerprint(self.seed, id.text().as_bytes()),
-        }
     }
 }
 
@@ -121,4 +128,24 @@ fn fingerprint(seed: u64, bytes: &[u8]) -> u64 {
     hash ^= hash >> 29;
     hash = hash.wrapping_mul(0x1656_6791_9e37_79f9);
     hash ^ (hash >> 32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IdIndex;
+    use crate::EntityId;
+
+    #[test]
+    fn prehashed_index_preserves_colliding_identifiers() {
+        let first = EntityId::new("entity:first").unwrap();
+        let second = EntityId::new("entity:second").unwrap();
+        let mut index = IdIndex::with_capacity(2);
+
+        assert_eq!(index.insert_hashed(first.clone(), 1, 7), None);
+        assert_eq!(index.insert_hashed(second.clone(), 2, 7), None);
+        assert_eq!(index.get_hashed(&first, 7), Some(&1));
+        assert_eq!(index.get_hashed(&second, 7), Some(&2));
+        assert_eq!(index.insert_hashed(second.clone(), 3, 7), Some(2));
+        assert_eq!(index.get_hashed(&second, 7), Some(&3));
+    }
 }

@@ -25,6 +25,8 @@ fn main() {
     let weavatrix_events = weavatrix_fixture(count);
     let cqrs_events = cqrs_fixture(count);
     let mut weavatrix_samples = Vec::new();
+    let mut owned_append_samples = Vec::new();
+    let mut receipt_append_samples = Vec::new();
     let mut cqrs_samples = Vec::new();
     for iteration in 0..11 {
         let mut store = InMemoryStore::default();
@@ -37,6 +39,26 @@ fn main() {
         black_box(store.load_stream(&stream, None));
         let weavatrix_elapsed = started.elapsed();
 
+        let mut store = InMemoryStore::default();
+        let events = weavatrix_events.clone();
+        let started = Instant::now();
+        black_box(
+            store
+                .append_owned(&stream, ExpectedVersion::NoStream, events)
+                .unwrap(),
+        );
+        let owned_append_elapsed = started.elapsed();
+
+        let mut store = InMemoryStore::default();
+        let events = weavatrix_events.clone();
+        let started = Instant::now();
+        black_box(
+            store
+                .append_owned_receipt(&stream, ExpectedVersion::NoStream, events)
+                .unwrap(),
+        );
+        let receipt_append_elapsed = started.elapsed();
+
         let store = MemStore::<BenchAggregate>::default();
         let events = cqrs_events.clone();
         let started = Instant::now();
@@ -48,6 +70,8 @@ fn main() {
         let cqrs_elapsed = started.elapsed();
         if iteration >= 2 {
             weavatrix_samples.push(weavatrix_elapsed);
+            owned_append_samples.push(owned_append_elapsed);
+            receipt_append_samples.push(receipt_append_elapsed);
             cqrs_samples.push(cqrs_elapsed);
         }
     }
@@ -55,6 +79,16 @@ fn main() {
         "weavatrix_evidence_append_load",
         count,
         median(&mut weavatrix_samples),
+    );
+    report(
+        "weavatrix_owned_append",
+        count,
+        median(&mut owned_append_samples),
+    );
+    report(
+        "weavatrix_receipt_append",
+        count,
+        median(&mut receipt_append_samples),
     );
     report(
         "cqrs_es_evidence_append_load",

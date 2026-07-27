@@ -4,7 +4,8 @@ use std::{
 };
 use weavatrix_memory::{
     AgentId, EntityId, EventId, EventStore, ExpectedVersion, InMemoryStore, MemoryEvent,
-    MemoryNode, MemoryProjection, NewEvent, SessionId, StreamId, Timestamp, replay,
+    MemoryNode, MemoryProjection, NewEvent, ProjectionClock, SessionId, StreamId, Timestamp,
+    replay, replay_owned,
 };
 
 fn main() {
@@ -15,6 +16,7 @@ fn main() {
     let events = fixture(count);
     for _ in 0..2 {
         black_box(replay::<_, MemoryProjection>(&events).unwrap());
+        black_box(replay_owned::<_, MemoryProjection>(events.clone()).unwrap());
     }
     let mut samples = (0..9)
         .map(|_| {
@@ -24,7 +26,40 @@ fn main() {
         })
         .collect::<Vec<_>>();
     samples.sort_unstable();
-    report(count, samples[samples.len() / 2]);
+    report("replay_borrowed", count, samples[samples.len() / 2]);
+    let mut owned_samples = (0..9)
+        .map(|_| {
+            let owned = events.clone();
+            let started = Instant::now();
+            black_box(replay_owned::<_, MemoryProjection>(owned).unwrap());
+            started.elapsed()
+        })
+        .collect::<Vec<_>>();
+    owned_samples.sort_unstable();
+    report(
+        "replay_owned",
+        count,
+        owned_samples[owned_samples.len() / 2],
+    );
+    let projection = replay::<_, MemoryProjection>(&events).unwrap();
+    let clock = ProjectionClock::new(
+        Timestamp::from_unix_micros(i64::MAX),
+        Timestamp::from_unix_micros(i64::MAX),
+    );
+    black_box(projection.view(clock));
+    let mut view_samples = (0..9)
+        .map(|_| {
+            let started = Instant::now();
+            black_box(projection.view(clock));
+            started.elapsed()
+        })
+        .collect::<Vec<_>>();
+    view_samples.sort_unstable();
+    report(
+        "projection_view",
+        count,
+        view_samples[view_samples.len() / 2],
+    );
 }
 
 fn fixture(count: usize) -> Vec<weavatrix_memory::StoredEvent<MemoryEvent>> {
@@ -59,11 +94,11 @@ fn fixture(count: usize) -> Vec<weavatrix_memory::StoredEvent<MemoryEvent>> {
         .unwrap()
 }
 
-fn report(count: usize, median: Duration) {
+fn report(name: &str, count: usize, median: Duration) {
     let rate =
         u128::try_from(count).expect("usize fits u128") * 1_000_000_000 / median.as_nanos().max(1);
     println!(
-        "replay events={count} median_ms={:.3} events_per_second={rate:.0}",
+        "{name} events={count} median_ms={:.3} events_per_second={rate:.0}",
         median.as_secs_f64() * 1_000.0
     );
 }

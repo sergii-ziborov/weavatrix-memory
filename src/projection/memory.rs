@@ -1,16 +1,16 @@
+mod apply;
 mod binary;
 mod index;
 mod parts;
 mod state;
 
-use super::Projection;
 use crate::{
-    EntityId, FactId, MemoryError, MemoryEvent, MemoryFact, MemoryNode, MemoryView, Result,
-    StoredEvent, Timestamp,
+    EntityId, FactId, MemoryError, MemoryFact, MemoryNode, MemoryView, MemoryViewRef, Result,
+    Timestamp,
 };
 use serde::{Deserialize, Serialize};
 use state::{NodeHistory, NodeRevision, Retraction, Supersession};
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 pub use binary::CompactSnapshotCodec;
 pub use state::MemoryProjection;
@@ -71,27 +71,36 @@ impl MemoryProjection {
 
     #[must_use]
     pub fn view(&self, clock: ProjectionClock) -> MemoryView {
+        self.view_ref(clock).into_owned()
+    }
+
+    /// Borrows a temporal view without cloning node, fact, or evidence payloads.
+    ///
+    /// This is the preferred boundary for lexical and vector index providers
+    /// that only need to read the current evidence projection.
+    #[must_use]
+    pub fn view_ref(&self, clock: ProjectionClock) -> MemoryViewRef<'_> {
         let nodes = self
             .nodes
             .iter()
             .filter_map(|revisions| visible_revision(revisions, clock.known_at))
-            .cloned()
             .collect::<Vec<_>>();
-        let visible_ids = nodes
-            .iter()
-            .map(|node| node.id.clone())
-            .collect::<BTreeSet<_>>();
+        let visible_ids = (nodes.len() != self.nodes.len()).then(|| {
+            nodes
+                .iter()
+                .map(|node| node.id.clone())
+                .collect::<HashSet<_>>()
+        });
         let facts = self
             .facts
             .iter()
             .filter(|fact| {
-                visible_ids.contains(&fact.source)
-                    && visible_ids.contains(&fact.target)
-                    && self.fact_is_active(fact, clock)
+                visible_ids.as_ref().is_none_or(|visible| {
+                    visible.contains(&fact.source) && visible.contains(&fact.target)
+                }) && self.fact_is_active(fact, clock)
             })
-            .cloned()
             .collect();
-        MemoryView { nodes, facts }
+        MemoryViewRef { nodes, facts }
     }
 
     pub(crate) fn fact_is_active(&self, fact: &MemoryFact, clock: ProjectionClock) -> bool {
@@ -181,7 +190,7 @@ impl MemoryProjection {
 
     fn apply_retraction(
         &mut self,
-        event: &StoredEvent<MemoryEvent>,
+        recorded_at: Timestamp,
         fact_id: &FactId,
         valid_until: Timestamp,
         evidence: &[crate::Evidence],
@@ -206,46 +215,9 @@ impl MemoryProjection {
             fact_id.clone(),
             Retraction {
                 valid_until,
-                recorded_at: event.metadata.recorded_at,
+                recorded_at,
             },
         );
-        Ok(())
-    }
-}
-
-impl Projection<MemoryEvent> for MemoryProjection {
-    fn apply(&mut self, event: &StoredEvent<MemoryEvent>) -> Result<()> {
-        if event.metadata.event_type != event.payload.event_type() {
-            return Err(MemoryError::InvalidValue {
-                field: "event_type",
-                reason: "must match the memory event payload",
-            });
-        }
-        match &event.payload {
-            MemoryEvent::NodeUpserted { node } => self.insert_node(NodeRevision {
-                node: node.clone(),
-                recorded_at: event.metadata.recorded_at,
-                position: event.metadata.global_position,
-            })?,
-            MemoryEvent::FactRecorded { fact } => {
-                if fact.recorded_at != event.metadata.recorded_at
-                    || fact.agent_id != event.metadata.agent_id
-                    || fact.session_id != event.metadata.session_id
-                {
-                    return Err(MemoryError::InvalidValue {
-                        field: "fact.envelope",
-                        reason: "fact provenance must match its event envelope",
-                    });
-                }
-                self.insert_fact(fact.clone())?;
-            }
-            MemoryEvent::FactRetracted {
-                fact_id,
-                valid_until,
-                evidence,
-            } => self.apply_retraction(event, fact_id, *valid_until, evidence)?,
-        }
-        self.last_global_position = Some(event.metadata.global_position);
         Ok(())
     }
 }

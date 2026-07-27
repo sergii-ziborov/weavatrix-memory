@@ -877,16 +877,16 @@ dependencies = [
 
 [[package]]
 name = "weavatrix-graph"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4f85d43e5c22fbea044393fc5cbfa2d2425e0e4de043733e30cac8b311b18dd"
+checksum = "582aae10d63d718386e4229b1f8b99232872ace919e76d45489d14473016e0ab"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "weavatrix-memory"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "agentic-memory",
  "chacha20poly1305",

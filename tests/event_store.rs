@@ -2,7 +2,8 @@ mod common;
 
 use common::{event, node};
 use weavatrix_memory::{
-    EventId, EventStore, ExpectedVersion, InMemoryStore, MemoryError, MemoryEvent, StreamId,
+    AppendReceipt, EventId, EventStore, ExpectedVersion, InMemoryStore, MemoryError, MemoryEvent,
+    StreamId,
 };
 
 #[test]
@@ -107,4 +108,45 @@ fn owned_append_preserves_the_event_contract() {
         .unwrap();
 
     assert_eq!(committed, store.load_stream(&stream, None));
+}
+
+#[test]
+fn receipt_append_moves_payloads_and_reports_exact_positions() {
+    let stream = StreamId::new("task:receipt").unwrap();
+    let pending = (0..3)
+        .map(|index| {
+            event(
+                &format!("event-receipt-{index}"),
+                index,
+                MemoryEvent::NodeUpserted {
+                    node: node(&format!("node:receipt:{index}"), "task", "Receipt append"),
+                },
+            )
+        })
+        .collect();
+    let mut store = InMemoryStore::default();
+
+    let receipt = store
+        .append_owned_receipt(&stream, ExpectedVersion::NoStream, pending)
+        .unwrap();
+
+    assert_eq!(receipt.event_count, 3);
+    assert_eq!(receipt.first_stream_version, Some(0));
+    assert_eq!(receipt.last_stream_version, Some(2));
+    assert_eq!(receipt.first_global_position, Some(0));
+    assert_eq!(receipt.last_global_position, Some(2));
+    assert_eq!(store.len(), 3);
+}
+
+#[test]
+fn empty_receipt_append_is_observable_without_creating_a_stream() {
+    let stream = StreamId::new("task:empty-receipt").unwrap();
+    let mut store = InMemoryStore::<MemoryEvent>::default();
+
+    let receipt = store
+        .append_owned_receipt(&stream, ExpectedVersion::NoStream, Vec::new())
+        .unwrap();
+
+    assert_eq!(receipt, AppendReceipt::default());
+    assert_eq!(store.stream_version(&stream), None);
 }

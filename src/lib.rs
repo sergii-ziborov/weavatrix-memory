@@ -34,7 +34,9 @@ pub use context::{
     RetrievalQuery, RetrievalResult, RetrievalSource, RetrievedContextBundle, TokenEstimator,
     fuse_retrieval,
 };
-pub use domain::{Confidence, Evidence, MemoryEvent, MemoryFact, MemoryNode, MemoryView};
+pub use domain::{
+    Confidence, Evidence, MemoryEvent, MemoryFact, MemoryNode, MemoryView, MemoryViewRef,
+};
 pub use error::{MemoryError, Result};
 pub use evaluation::{
     EvaluationCase, EvaluationReport, RankedPrediction, RetrievalMetrics, evaluate_retrieval,
@@ -49,11 +51,11 @@ pub use graph_projection::project_graph;
 pub use id::{AgentId, EntityId, EventId, FactId, SessionId, StreamId};
 pub use projection::{
     CompactSnapshotCodec, MemoryProjection, Projection, ProjectionClock, ProjectionSnapshot,
-    ReplayCursor, replay, replay_tracked, resume,
+    ReplayCursor, replay, replay_owned, replay_tracked, resume,
 };
 pub use snapshot::{FileSnapshotStore, InMemorySnapshotStore, SnapshotOptions, SnapshotStore};
 pub use store::{
-    CatchUpSubscription, Durability, EventStore, ExpectedVersion, FileEventStore, FileStoreOptions,
-    InMemoryStore, RecoveryPolicy, SubscriptionCheckpoint,
+    AppendReceipt, CatchUpSubscription, Durability, EventStore, ExpectedVersion, FileEventStore,
+    FileStoreOptions, InMemoryStore, RecoveryPolicy, SubscriptionCheckpoint,
 };
 pub use time::Timestamp;

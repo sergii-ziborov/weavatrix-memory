@@ -8,7 +8,7 @@ pub use event::MemoryEvent;
 pub use evidence::{Confidence, Evidence};
 pub use fact::MemoryFact;
 pub use node::MemoryNode;
-pub use view::MemoryView;
+pub use view::{MemoryView, MemoryViewRef};
 
 use crate::{MemoryError, Result};
 

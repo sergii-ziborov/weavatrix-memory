@@ -2,9 +2,9 @@ use super::{
     EventStore, ExpectedVersion, InMemoryStore,
     frame::{self, ScanOutcome},
 };
-use crate::{Codec, MemoryError, NewEvent, Result, StoredEvent, StreamId};
+use crate::{AppendReceipt, Codec, MemoryError, NewEvent, Result, StoredEvent, StreamId};
 use std::{
-    fs::{File, OpenOptions},
+    fs::{File, OpenOptions, TryLockError},
     io::{Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
@@ -19,6 +19,7 @@ pub enum RecoveryPolicy {
 pub enum Durability {
     Flush,
     SyncData,
+    SyncAll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +33,7 @@ impl Default for FileStoreOptions {
     fn default() -> Self {
         Self {
             recovery: RecoveryPolicy::Strict,
-            durability: Durability::SyncData,
+            durability: Durability::SyncAll,
             max_frame_bytes: 256 * 1024 * 1024,
         }
     }
@@ -73,6 +74,10 @@ where
             .truncate(false)
             .open(&path)
             .map_err(|error| io("open event log", error))?;
+        file.try_lock().map_err(|error| match error {
+            TryLockError::WouldBlock => MemoryError::ExternalModification,
+            TryLockError::Error(error) => io("lock event log", error),
+        })?;
         if file
             .metadata()
             .map_err(|error| io("read event log metadata", error))?
@@ -193,6 +198,19 @@ where
         Ok(committed)
     }
 
+    fn append_owned_receipt(
+        &mut self,
+        stream: &StreamId,
+        expected: ExpectedVersion,
+        events: Vec<NewEvent<E>>,
+    ) -> Result<AppendReceipt> {
+        let committed = self.inner.prepare_append_owned(stream, expected, events)?;
+        self.persist(&committed)?;
+        let receipt = AppendReceipt::from_events(&committed);
+        self.inner.commit_prepared_owned(committed);
+        Ok(receipt)
+    }
+
     fn load_stream(&self, stream: &StreamId, after: Option<u64>) -> Vec<StoredEvent<E>> {
         self.inner.load_stream(stream, after)
     }
@@ -216,6 +234,9 @@ fn sync(file: &File, durability: Durability) -> Result<()> {
         Durability::SyncData => file
             .sync_data()
             .map_err(|error| io("sync event log", error)),
+        Durability::SyncAll => file
+            .sync_all()
+            .map_err(|error| io("sync event log data and metadata", error)),
     }
 }
 

@@ -77,6 +77,29 @@ fn owned_append_is_durable_after_reopen() {
 }
 
 #[test]
+fn owned_receipt_append_is_durable_after_reopen() {
+    let file = TempLog::new();
+    let stream = StreamId::new("task:receipt").unwrap();
+    {
+        let mut store = FileEventStore::open(file.path(), JsonCodec, fast_options()).unwrap();
+        let receipt = store
+            .append_owned_receipt(
+                &stream,
+                ExpectedVersion::NoStream,
+                vec![node_event("event:receipt", "node:receipt")],
+            )
+            .unwrap();
+        assert_eq!(receipt.event_count, 1);
+        assert_eq!(receipt.first_stream_version, Some(0));
+        assert_eq!(receipt.last_global_position, Some(0));
+    }
+
+    let reopened =
+        FileEventStore::<MemoryEvent, _>::open(file.path(), JsonCodec, fast_options()).unwrap();
+    assert_eq!(reopened.load_stream(&stream, None).len(), 1);
+}
+
+#[test]
 fn recovery_truncates_only_an_incomplete_tail() {
     let file = TempLog::new();
     let stream = StreamId::new("task:recovery").unwrap();
@@ -156,15 +179,17 @@ fn checksum_corruption_is_never_silently_recovered() {
 }
 
 #[test]
-fn active_writer_detects_external_file_changes() {
+fn active_writer_rejects_or_detects_external_file_changes() {
     let file = TempLog::new();
     let mut store = FileEventStore::open(file.path(), JsonCodec, fast_options()).unwrap();
-    OpenOptions::new()
+    let external_write = OpenOptions::new()
         .append(true)
         .open(file.path())
-        .unwrap()
-        .write_all(b"x")
-        .unwrap();
+        .and_then(|mut file| file.write_all(b"x"));
+    if external_write.is_err() {
+        assert_eq!(store.len(), 0);
+        return;
+    }
 
     let error = store
         .append(
@@ -174,6 +199,20 @@ fn active_writer_detects_external_file_changes() {
         )
         .unwrap_err();
     assert_eq!(error, MemoryError::ExternalModification);
+}
+
+#[test]
+fn active_writer_holds_an_exclusive_file_lock() {
+    let file = TempLog::new();
+    let store =
+        FileEventStore::<MemoryEvent, _>::open(file.path(), JsonCodec, fast_options()).unwrap();
+    let error = FileEventStore::<MemoryEvent, _>::open(file.path(), JsonCodec, fast_options())
+        .err()
+        .unwrap();
+    assert_eq!(error, MemoryError::ExternalModification);
+
+    drop(store);
+    assert!(FileEventStore::<MemoryEvent, _>::open(file.path(), JsonCodec, fast_options()).is_ok());
 }
 
 #[test]

@@ -19,7 +19,7 @@ pub struct SnapshotOptions {
 impl Default for SnapshotOptions {
     fn default() -> Self {
         Self {
-            durability: Durability::SyncData,
+            durability: Durability::SyncAll,
             max_snapshot_bytes: 512 * 1024 * 1024,
         }
     }
@@ -186,6 +186,9 @@ where
             Durability::SyncData => file
                 .sync_data()
                 .map_err(|error| io("sync snapshot", error))?,
+            Durability::SyncAll => file
+                .sync_all()
+                .map_err(|error| io("sync snapshot data and metadata", error))?,
         }
         drop(file);
         fs::rename(&temporary, &final_path).map_err(|error| io("commit snapshot", error))?;

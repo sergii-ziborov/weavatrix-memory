@@ -63,6 +63,24 @@ fn main() {
     }
 
     let projection = replay::<_, MemoryProjection>(&weavatrix_events).unwrap();
+    let clock = weavatrix_memory::ProjectionClock::new(
+        Timestamp::from_unix_micros(i64::MAX),
+        Timestamp::from_unix_micros(i64::MAX),
+    );
+    let mut view_samples = Vec::new();
+    let mut view_ref_samples = Vec::new();
+    for iteration in 0..11 {
+        let started = Instant::now();
+        black_box(projection.view(clock));
+        if iteration >= 2 {
+            view_samples.push(started.elapsed());
+        }
+        let started = Instant::now();
+        black_box(projection.view_ref(clock));
+        if iteration >= 2 {
+            view_ref_samples.push(started.elapsed());
+        }
+    }
     let agentic_graph = MemoryGraph::from_parts(agentic_nodes, agentic_edges, 0).unwrap();
     let request = ContextRequest::new(
         vec![EntityId::new(format!("node:{}", node_count / 2)).unwrap()],
@@ -121,6 +139,18 @@ fn main() {
         node_count,
         edge_count,
         median(&mut agentic_build),
+    );
+    report(
+        "weavatrix_full_view",
+        node_count,
+        edge_count,
+        median(&mut view_samples),
+    );
+    report(
+        "weavatrix_full_view_ref",
+        node_count,
+        edge_count,
+        median(&mut view_ref_samples),
     );
     report(
         "weavatrix_context_depth2",

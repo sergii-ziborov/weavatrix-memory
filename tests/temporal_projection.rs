@@ -46,10 +46,26 @@ fn late_supersession_changes_known_future_not_known_past() {
     let projection = replay::<_, MemoryProjection>(&store.load_all(None, usize::MAX)).unwrap();
 
     let before_learning = projection.view(ProjectionClock::new(ts(40), ts(40)));
+    assert_eq!(
+        before_learning,
+        projection
+            .view_ref(ProjectionClock::new(ts(40), ts(40)))
+            .into_owned()
+    );
     assert_eq!(before_learning.facts[0].id.as_str(), "fact:old");
 
     let after_learning = projection.view(ProjectionClock::new(ts(40), ts(60)));
+    assert_eq!(
+        after_learning,
+        projection
+            .view_ref(ProjectionClock::new(ts(40), ts(60)))
+            .into_owned()
+    );
     assert_eq!(after_learning.facts[0].id.as_str(), "fact:new");
+
+    let before_nodes = projection.view_ref(ProjectionClock::new(ts(1), ts(1)));
+    assert!(before_nodes.nodes.is_empty());
+    assert!(before_nodes.facts.is_empty());
 }
 
 #[test]

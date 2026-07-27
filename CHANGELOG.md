@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-27
+
+### Added
+
+- Borrowed `MemoryViewRef` projections for zero-copy lexical and vector index
+  adapters.
+- Receipt-only owned append and consuming replay paths for callers that do not
+  need cloned committed payloads.
+- Standard-library exclusive writer locking and `SyncAll` durability.
+
+### Changed
+
+- Replay preallocates projection indexes and uses an ephemeral hash set for
+  duplicate detection without changing canonical cursor output.
+- Projection identifier indexes use randomized prehashed collision buckets,
+  avoiding transient string clones during endpoint validation.
+- CRC32C framing uses a verified table-driven implementation.
+- Current temporal views skip endpoint membership indexes when every node is
+  visible; the 100,000-node/300,000-fact owned-view benchmark improved 2.74x.
+- The minimum supported Rust version is now 1.89.
+
 ## [0.2.0] - 2026-07-26
 
 ### Added

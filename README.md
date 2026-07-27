@@ -8,6 +8,7 @@ The crate is a standalone MIT-licensed module of Weavatrix Rust Core. Its
 deterministic core does not require an LLM, vector database, external graph
 database, async runtime, system clock, or Git executable. Durable storage is
 available without requiring a database.
+The minimum supported Rust version is 1.89.
 
 ## Why it exists
 
@@ -28,11 +29,13 @@ query instead of mutating one opaque “current truth”.
 
 - Atomic per-stream append.
 - Owned-batch append path that avoids cloning caller-owned payloads.
+- Receipt-only append path that moves committed payloads directly into storage.
 - Optimistic concurrency with `NoStream`, `Exact`, and `Any` expectations.
 - Globally ordered cursors and independently versioned streams.
 - Globally unique event identifiers.
 - Strict replay validation for cursor gaps and stream-version gaps.
-- Framed filesystem journal with CRC32C corruption detection.
+- Framed filesystem journal with table-driven CRC32C corruption detection.
+- Standard-library exclusive writer locks and `SyncAll` durability by default.
 - Strict open by default and explicit recovery for incomplete trailing batches.
 - Immutable generation-named projection snapshots and validated resume.
 - Explicit-ack catch-up subscriptions with redelivery before acknowledgement.
@@ -41,6 +44,7 @@ query instead of mutating one opaque “current truth”.
 - Evidence required for every memory relation and retraction.
 - Explicit supersession without deleting historical facts.
 - Validated bulk projection with compact dual-CSR incident indexes.
+- Borrowed temporal views for zero-copy lexical and vector indexing.
 - Deterministic projection into canonical `weavatrix-graph` snapshots.
 - Provider-neutral literal, lexical, semantic, and hybrid retrieval with
   deterministic reciprocal-rank fusion.
@@ -95,7 +99,8 @@ interfaces or higher-level Weavatrix Rust Core modules.
 
 Use `append` when the pending events must remain available to the caller. Use
 `append_owned` to transfer a batch into the store without cloning its input
-payloads.
+payloads. Use `append_owned_receipt` when the caller only needs committed
+positions; this avoids cloning committed payloads back out of the store.
 
 ## Durable storage
 
@@ -109,10 +114,16 @@ The default `RecoveryPolicy::Strict` rejects any truncated tail. Explicit
 headers, impossible sizes, malformed payloads, and checksum failures are never
 silently repaired.
 
-The file store is intentionally single-writer. It detects file-length changes
-made by another active handle, but it does not claim cross-process locking.
-Applications needing multiple writers should provide a database-backed
-`EventStore`.
+The file store is intentionally one-writer-per-journal. It acquires an
+OS-backed exclusive lock through the Rust standard library and retains the
+file-length guard against non-cooperating writers. A competing `FileEventStore`
+fails before scanning or appending, and the OS releases the lock after process
+termination. Applications needing coordinated concurrent writers should
+provide a database-backed `EventStore`.
+
+`Durability::SyncAll` is the default and syncs file data plus metadata.
+`SyncData` and `Flush` remain explicit lower-cost choices for workloads with
+weaker persistence requirements.
 
 Serialization is injected through the `Codec<T>` trait. The crate has no
 default codec, compression, encryption, or mmap dependency. Storage features
@@ -128,7 +139,7 @@ are opt-in:
 
 ```toml
 [dependencies]
-weavatrix-memory = { version = "0.2", features = ["secure-storage"] }
+weavatrix-memory = { version = "0.3", features = ["secure-storage"] }
 ```
 
 `FileSnapshotStore` writes immutable, position-named snapshots through a
@@ -296,6 +307,13 @@ literal, lexical, semantic, or hybrid search. Integer reciprocal-rank fusion
 combines their ranks without pretending BM25 and vector scores share a scale;
 the result retains provider, channel, rank, and raw-score provenance.
 
+`MemoryProjection::view_ref` exposes the same bitemporal selection as `view`
+while borrowing node, fact, and evidence payloads. A future
+`weavatrix-search-vector` adapter can index this view and implement
+`RetrievalProvider`; the memory crate therefore does not depend on an embedding
+model or vector engine. Provider-local scores are used only to establish each
+provider's rank, while reciprocal-rank fusion remains scale-independent.
+
 After seed resolution, the compiler traverses selected relations in both
 directions, ranks nearby evidence deterministically, and stops before exceeding
 the configured budget. The receipt records:
@@ -351,11 +369,13 @@ one-off timings. On an Intel Core Ultra 7 255U, Windows 11, Rust 1.97.1,
 
 | Contract | Median | Throughput |
 | --- | ---: | ---: |
-| In-memory evidence append + load | 112.936 ms | 885,459 events/s |
-| `cqrs-es` 0.5.0 evidence append + load | 186.668 ms | 535,709 events/s |
-| CRC32C JSON append + `sync_data` | 438.244 ms | 228,183 events/s |
-| Durable reopen + index validation | 383.401 ms | 260,823 events/s |
-| Bitemporal projection replay | 129.592 ms | 771,654 events/s |
+| In-memory evidence append + load | 97.313 ms | 1,027,608 events/s |
+| Owned append, committed envelopes returned | 61.156 ms | 1,635,170 events/s |
+| Receipt-only owned append | 39.990 ms | 2,500,643 events/s |
+| `cqrs-es` 0.5.0 evidence append + load | 144.972 ms | 689,787 events/s |
+| CRC32C JSON append + `sync_data` | 336.196 ms | 297,445 events/s |
+| Durable reopen + index validation | 337.736 ms | 296,088 events/s |
+| Bitemporal projection replay | 91.603 ms | 1,091,667 events/s |
 
 The competitor workload carries the same event identifier, event type,
 occurred/recorded timestamps, and agent/session identities. Weavatrix
@@ -363,7 +383,9 @@ additionally checks identifier uniqueness and optimistic concurrency and
 assigns a global cursor. Each side performs append followed by a cloned stream
 load. Fixtures are created outside the timed region; nine samples are measured
 after two warmups and the median is reported. Under this evidence-equivalent
-contract, Weavatrix used 39.5% less time than `cqrs-es` in this run. These are
+contract, Weavatrix used 32.9% less time than `cqrs-es` in this run. The owned
+and receipt-only rows expose progressively narrower return contracts and avoid
+unneeded output clones. These are
 local measurements, not universal hardware claims.
 
 The graph-memory harness also compares against `agentic-memory` 0.4.2. At
@@ -371,17 +393,31 @@ The graph-memory harness also compares against `agentic-memory` 0.4.2. At
 
 | Contract | Weavatrix | `agentic-memory` | Result |
 | --- | ---: | ---: | --- |
-| Depth-2 context, identical 13-node/33-edge output | 0.293 ms | 6.750 ms | Weavatrix 23.0x faster |
-| Validated `try_from_parts` + dual CSR | 133.915 ms | 93.103 ms | `agentic-memory` 1.44x faster |
-| Strict replay of 400,000 envelopes | 1,248.583 ms | n/a | Different contract |
+| Depth-2 context, identical 13-node/33-edge output | 0.193 ms | 5.042 ms | Weavatrix 26.1x faster |
+| Validated `try_from_parts` + dual CSR | 71.076 ms | 42.191 ms | `agentic-memory` 1.68x faster |
+| Strict replay of 400,000 envelopes | 494.020 ms | n/a | Different contract |
 
 The context row is output-equivalent. The bulk-construction row compares each
 crate's parts constructor, but the contracts are still not identical:
 Weavatrix validates node and fact domains, evidence, uniqueness, endpoints, and
 supersession before building both CSR directions. The harness records that
 `agentic-memory::MemoryGraph::from_parts` accepts a dangling edge. The new bulk
-path reduced the measured construction gap from 18.2x to 1.44x without dropping
+path reduced the measured construction gap from 18.2x to 1.68x without dropping
 those checks; strict event replay remains a separately reported operation.
+
+The current-view path was also profiled at 100,000 nodes and 300,000 facts.
+Replacing ordered membership checks with a validated all-nodes-visible fast
+path and adding a borrowed view produced:
+
+| Contract | Before | Current | Improvement |
+| --- | ---: | ---: | ---: |
+| Owned bitemporal `MemoryView` | 492.755 ms | 207.412 ms | 2.38x |
+| Borrowed `MemoryViewRef` | 492.755 ms | 10.957 ms | 45.0x |
+
+The owned row returns the same owned node/fact payload contract before and
+after. The borrowed row deliberately returns references and is intended for
+search/vector indexing and other read-only consumers. Timings are local medians
+from the executable competitor harness, not universal hardware claims.
 
 At 10,000 nodes and 30,000 facts, the versioned compact snapshot codec measured:
 
@@ -464,9 +500,10 @@ workload.
 ## Status
 
 The public API is experimental before `1.0`. The filesystem journal and
-snapshots are local embedded stores, not a distributed database. Cross-process
-writer coordination, ACL policies, Git history, MCP tools, compaction, and
-database adapters remain separate layers.
+snapshots are local embedded stores, not a distributed database. Exclusive
+writer exclusion is built in; concurrent multiwriter scheduling, ACL policies,
+Git history, MCP tools, compaction, and database adapters remain separate
+layers.
 
 ## License
 

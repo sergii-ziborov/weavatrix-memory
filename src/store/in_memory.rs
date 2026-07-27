@@ -1,8 +1,10 @@
 use crate::{
-    EventId, EventMetadata, EventStore, ExpectedVersion, MemoryError, NewEvent, Result,
-    StoredEvent, StreamId,
+    AppendReceipt, EventId, EventMetadata, EventStore, ExpectedVersion, MemoryError, NewEvent,
+    Result, StoredEvent, StreamId,
 };
 use std::collections::{HashMap, HashSet};
+
+mod validation;
 
 #[derive(Debug, Clone)]
 pub struct InMemoryStore<E> {
@@ -29,8 +31,8 @@ impl<E: Clone> InMemoryStore<E> {
         events: &[NewEvent<E>],
     ) -> Result<Vec<StoredEvent<E>>> {
         let actual = self.stream_version(stream);
-        validate_expected(stream, expected, actual)?;
-        validate_unique_ids(&self.event_ids, events)?;
+        validation::expected(stream, expected, actual)?;
+        validation::unique_ids(&self.event_ids, events)?;
 
         let start_version = actual.map_or(Ok(0), |version| {
             version.checked_add(1).ok_or(MemoryError::CapacityOverflow)
@@ -75,8 +77,8 @@ impl<E: Clone> InMemoryStore<E> {
         events: Vec<NewEvent<E>>,
     ) -> Result<Vec<StoredEvent<E>>> {
         let actual = self.stream_version(stream);
-        validate_expected(stream, expected, actual)?;
-        validate_unique_ids(&self.event_ids, &events)?;
+        validation::expected(stream, expected, actual)?;
+        validation::unique_ids(&self.event_ids, &events)?;
 
         let start_version = actual.map_or(Ok(0), |version| {
             version.checked_add(1).ok_or(MemoryError::CapacityOverflow)
@@ -134,6 +136,31 @@ impl<E: Clone> InMemoryStore<E> {
             event_ids.insert(event.metadata.id.clone());
             positions.push(events.len());
             events.push(event.clone());
+        }
+    }
+
+    pub(crate) fn commit_prepared_owned(&mut self, committed: Vec<StoredEvent<E>>) {
+        let Some(first) = committed.first() else {
+            return;
+        };
+        debug_assert!(
+            committed
+                .iter()
+                .all(|event| event.metadata.stream_id == first.metadata.stream_id)
+        );
+        let Self {
+            events,
+            streams,
+            event_ids,
+        } = self;
+        events.reserve(committed.len());
+        event_ids.reserve(committed.len());
+        let positions = streams.entry(first.metadata.stream_id.clone()).or_default();
+        positions.reserve(committed.len());
+        for event in committed {
+            event_ids.insert(event.metadata.id.clone());
+            positions.push(events.len());
+            events.push(event);
         }
     }
 
@@ -204,6 +231,18 @@ impl<E: Clone> EventStore<E> for InMemoryStore<E> {
         Ok(committed)
     }
 
+    fn append_owned_receipt(
+        &mut self,
+        stream: &StreamId,
+        expected: ExpectedVersion,
+        events: Vec<NewEvent<E>>,
+    ) -> Result<AppendReceipt> {
+        let committed = self.prepare_append_owned(stream, expected, events)?;
+        let receipt = AppendReceipt::from_events(&committed);
+        self.commit_prepared_owned(committed);
+        Ok(receipt)
+    }
+
     fn load_stream(&self, stream: &StreamId, after: Option<u64>) -> Vec<StoredEvent<E>> {
         self.streams
             .get(stream)
@@ -234,40 +273,4 @@ impl<E: Clone> EventStore<E> for InMemoryStore<E> {
     fn len(&self) -> usize {
         self.events.len()
     }
-}
-
-fn validate_expected(
-    stream: &StreamId,
-    expected: ExpectedVersion,
-    actual: Option<u64>,
-) -> Result<()> {
-    let matches = match expected {
-        ExpectedVersion::Any => true,
-        ExpectedVersion::NoStream => actual.is_none(),
-        ExpectedVersion::Exact(version) => actual == Some(version),
-    };
-    if matches {
-        return Ok(());
-    }
-    let expected = match expected {
-        ExpectedVersion::Any | ExpectedVersion::NoStream => None,
-        ExpectedVersion::Exact(version) => Some(version),
-    };
-    Err(MemoryError::VersionConflict {
-        stream: stream.to_string(),
-        expected,
-        actual,
-    })
-}
-
-fn validate_unique_ids<E>(known: &HashSet<EventId>, events: &[NewEvent<E>]) -> Result<()> {
-    let mut batch = HashSet::with_capacity(events.len());
-    for event in events {
-        if known.contains(&event.id) || !batch.insert(event.id.clone()) {
-            return Err(MemoryError::DuplicateEvent {
-                id: event.id.to_string(),
-            });
-        }
-    }
-    Ok(())
 }
