@@ -5,7 +5,7 @@ use agentic_memory::{
 #[path = "memory_competitors/support.rs"]
 mod support;
 use std::{hint::black_box, time::Instant};
-use support::{env_usize, median, record, report};
+use support::{agentic_accepts_dangling_edge, env_usize, median, record, report};
 use weavatrix_memory::{
     AgentId, ContextCompiler, ContextRequest, EntityId, EventId, EventStore, Evidence,
     ExpectedVersion, FactId, InMemoryStore, MemoryEvent, MemoryFact, MemoryNode, MemoryProjection,
@@ -281,23 +281,4 @@ fn agentic_fixture(
         }
     }
     (nodes, edges)
-}
-
-fn agentic_accepts_dangling_edge() -> bool {
-    let mut node = CognitiveEventBuilder::new(EventType::Fact, "only node")
-        .created_at(1)
-        .build();
-    node.feature_vec.clear();
-    MemoryGraph::from_parts(
-        vec![node],
-        vec![AgenticEdge::with_timestamp(
-            0,
-            1,
-            EdgeType::Supports,
-            1.0,
-            1,
-        )],
-        0,
-    )
-    .is_ok()
 }

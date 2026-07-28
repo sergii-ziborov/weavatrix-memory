@@ -39,13 +39,13 @@ where
     T: serde::Serialize + serde::de::DeserializeOwned,
 {
     fn encode(&self, value: &T) -> Result<Vec<u8>> {
-        serde_json::to_vec(value).map_err(|error| crate::MemoryError::Codec {
+        blazingly_json::to_vec(value).map_err(|error| crate::MemoryError::Codec {
             message: error.to_string(),
         })
     }
 
     fn decode(&self, bytes: &[u8]) -> Result<T> {
-        serde_json::from_slice(bytes).map_err(|error| crate::MemoryError::Codec {
+        blazingly_json::from_slice(bytes).map_err(|error| crate::MemoryError::Codec {
             message: error.to_string(),
         })
     }

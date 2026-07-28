@@ -31,8 +31,8 @@ fn generated_multi_stream_history_round_trips() {
                 .unwrap();
         }
         let events = store.load_all(None, usize::MAX);
-        let json = serde_json::to_vec(&events).unwrap();
-        let decoded: Vec<StoredEvent<MemoryEvent>> = serde_json::from_slice(&json).unwrap();
+        let json = blazingly_json::to_vec(&events).unwrap();
+        let decoded: Vec<StoredEvent<MemoryEvent>> = blazingly_json::from_slice(&json).unwrap();
         let original: MemoryProjection = replay(&events).unwrap();
         let round_trip: MemoryProjection = replay(&decoded).unwrap();
         let owned: MemoryProjection = replay_owned(decoded).unwrap();

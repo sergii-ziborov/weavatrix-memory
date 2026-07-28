@@ -87,7 +87,7 @@ fn cursors_are_exclusive_and_deterministic() {
 
 #[test]
 fn identifier_deserialization_preserves_validation() {
-    let result = serde_json::from_str::<EventId>("\" invalid \"");
+    let result = blazingly_json::from_str::<EventId>("\" invalid \"");
     assert!(result.is_err());
 }
 

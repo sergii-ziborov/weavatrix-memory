@@ -2,12 +2,10 @@
 
 mod common;
 
-use common::{event, node};
+use common::{TempLog, event, node};
 use std::{
     fs::{self, OpenOptions},
     io::{Seek, SeekFrom, Write},
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
 };
 use weavatrix_memory::{
     Codec, Durability, EventStore, ExpectedVersion, FileEventStore, FileStoreOptions,
@@ -293,30 +291,5 @@ fn fast_options() -> FileStoreOptions {
     FileStoreOptions {
         durability: Durability::Flush,
         ..FileStoreOptions::default()
-    }
-}
-
-struct TempLog {
-    path: PathBuf,
-}
-
-impl TempLog {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("weavatrix-memory-{}-{id}.wmem", std::process::id()));
-        let _ = fs::remove_file(&path);
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempLog {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
     }
 }

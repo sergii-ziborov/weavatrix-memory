@@ -1,10 +1,40 @@
 #![allow(dead_code)]
 
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
 use weavatrix_memory::{
     AgentId, EntityId, EventId, EventStore, Evidence, ExpectedVersion, FactId, InMemoryStore,
     MemoryEvent, MemoryFact, MemoryNode, MemoryProjection, NewEvent, SessionId, StreamId,
     Timestamp, replay,
 };
+
+pub struct TempLog {
+    path: PathBuf,
+}
+
+impl TempLog {
+    pub fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("weavatrix-memory-{}-{id}.wmem", std::process::id()));
+        let _ = fs::remove_file(&path);
+        Self { path }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempLog {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
 
 pub fn ts(value: i64) -> Timestamp {
     Timestamp::from_unix_micros(value)

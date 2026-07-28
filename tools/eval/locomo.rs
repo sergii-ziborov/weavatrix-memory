@@ -1,9 +1,10 @@
 use super::model::{Document, PreparedBenchmark, PreparedCase};
-use serde_json::Value;
+use blazingly_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn prepare(bytes: &[u8]) -> Result<PreparedBenchmark, String> {
-    let samples = serde_json::from_slice::<Vec<Value>>(bytes).map_err(|error| error.to_string())?;
+    let samples =
+        blazingly_json::from_slice::<Vec<Value>>(bytes).map_err(|error| error.to_string())?;
     let mut groups = BTreeMap::new();
     let mut cases = Vec::new();
     for (sample_index, sample) in samples.iter().enumerate() {

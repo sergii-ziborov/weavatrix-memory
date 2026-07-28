@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             benchmark.validate()?;
             let limit = limit.parse::<usize>()?;
             let predictions = benchmark.literal_predictions(limit);
-            fs::write(output, serde_json::to_vec_pretty(&predictions)?)?;
+            fs::write(output, blazingly_json::to_vec_pretty(&predictions)?)?;
         }
         [command, benchmark, predictions, output] if command == "score" => {
             let benchmark = read_prepared(benchmark)?;
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let predictions = read_predictions(predictions)?;
             let report =
                 evaluate_retrieval(&benchmark.evaluation_cases(), &predictions, &[1, 5, 10])?;
-            fs::write(output, serde_json::to_vec_pretty(&report)?)?;
+            fs::write(output, blazingly_json::to_vec_pretty(&report)?)?;
             println!(
                 "cases={} hit@5={:.4} recall@5={:.4} mrr={:.4}",
                 report.overall.cases,
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn read_prepared(path: impl AsRef<Path>) -> Result<PreparedBenchmark, Box<dyn Error>> {
-    Ok(serde_json::from_slice(&fs::read(path)?)?)
+    Ok(blazingly_json::from_slice(&fs::read(path)?)?)
 }
 
 fn write_prepared(
@@ -58,19 +58,19 @@ fn write_prepared(
     path: impl AsRef<Path>,
 ) -> Result<(), Box<dyn Error>> {
     benchmark.validate()?;
-    fs::write(path, serde_json::to_vec(benchmark)?)?;
+    fs::write(path, blazingly_json::to_vec(benchmark)?)?;
     Ok(())
 }
 
 fn read_predictions(path: impl AsRef<Path>) -> Result<Vec<RankedPrediction>, Box<dyn Error>> {
     let bytes = fs::read(path)?;
-    if let Ok(predictions) = serde_json::from_slice(&bytes) {
+    if let Ok(predictions) = blazingly_json::from_slice(&bytes) {
         return Ok(predictions);
     }
     let text = std::str::from_utf8(&bytes)?;
     text.lines()
         .filter(|line| !line.trim().is_empty())
-        .map(serde_json::from_str)
+        .map(blazingly_json::from_str)
         .collect::<Result<Vec<_>, _>>()
         .map_err(Into::into)
 }

@@ -131,15 +131,19 @@ are opt-in:
 
 | Feature | Adds |
 | --- | --- |
-| `json` | `JsonCodec` |
+| `json` | `JsonCodec`, powered by Tokio-free `blazingly-json` |
 | `compression` | Size-bounded `Lz4Codec<C>` |
 | `encryption` | `XChaCha20Codec<C, K>` and key-provider contracts |
 | `mmap` | Guarded read-only snapshot mapping |
 | `secure-storage` | `compression`, `encryption`, and `mmap` |
 
+The `json` feature has no direct or runtime `serde_json` dependency.
+`blazingly-json` implements the same Serde-based `JsonCodec` contract, so stored
+JSON and the public codec API remain unchanged.
+
 ```toml
 [dependencies]
-weavatrix-memory = { version = "0.3", features = ["secure-storage"] }
+weavatrix-memory = { version = "0.3.1", features = ["secure-storage"] }
 ```
 
 `FileSnapshotStore` writes immutable, position-named snapshots through a
@@ -388,6 +392,18 @@ and receipt-only rows expose progressively narrower return contracts and avoid
 unneeded output clones. These are
 local measurements, not universal hardware claims.
 
+An exploratory Redis 8.8 Streams cross-check used a 512-byte payload, one
+client, Docker-local `redis-benchmark`, and AOF enabled. With
+`appendfsync always`, `XADD` reached 7,680 events/s at pipeline 100; changing to
+the default-like `everysec` policy reached 200,000 events/s but can lose about
+one second of writes. This is not an output-equivalent competitor benchmark:
+it excludes client-side JSON serialization, projection replay, identifier
+validation, and optimistic concurrency. It confirms the useful Redis pattern
+is batched writes plus an explicit durability tradeoff. `FileEventStore`
+already writes one checksummed frame and performs one selected sync per append
+batch, while Redis remains the appropriate separate layer when coordinated
+multiwriter access or replication is required.
+
 The graph-memory harness also compares against `agentic-memory` 0.4.2. At
 100,000 nodes and 300,000 edges:
 
@@ -429,6 +445,20 @@ At 10,000 nodes and 30,000 facts, the versioned compact snapshot codec measured:
 
 Both decoders restore the same projection and rebuild validated lookup and CSR
 indexes. The benchmark reports nine samples after two warmups.
+
+The `blazingly-json` migration was also measured against a temporary
+`serde_json` oracle in the same process, with operations interleaved on the
+same 9,543,533-byte snapshot. Two complete runs produced stable relative
+results despite unrelated system load:
+
+| JSON operation | `blazingly-json` speedup over `serde_json` |
+| --- | ---: |
+| Encode | 1.16x-1.23x |
+| Decode and validate indexes | 1.13x |
+
+The oracle dependency was removed after the differential measurement;
+`serde_json` remains in `Cargo.lock` only through the isolated
+`agentic-memory` and `cqrs-es` development benchmarks.
 
 The secure-storage harness first serializes a 100,000-node, 300,000-fact
 projection into 38,828,001 compact bytes, then measures only the byte transform.

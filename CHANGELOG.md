@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-28
+
+### Changed
+
+- Replaced the optional `serde_json` runtime and development dependency with
+  `blazingly-json` while preserving the `json` feature and `JsonCodec` API.
+- Migrated the evaluation CLI, benchmark adapters, and JSON round-trip tests to
+  `blazingly-json`.
+- Documented same-process codec measurements and a durability-matched Redis
+  Streams cross-check.
+
 ## [0.3.0] - 2026-07-27
 
 ### Added

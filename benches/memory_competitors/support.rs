@@ -1,5 +1,28 @@
 use std::time::Duration;
 
+pub(crate) fn agentic_accepts_dangling_edge() -> bool {
+    use agentic_memory::{
+        CognitiveEventBuilder, Edge as AgenticEdge, EdgeType, EventType, MemoryGraph,
+    };
+
+    let mut node = CognitiveEventBuilder::new(EventType::Fact, "only node")
+        .created_at(1)
+        .build();
+    node.feature_vec.clear();
+    MemoryGraph::from_parts(
+        vec![node],
+        vec![AgenticEdge::with_timestamp(
+            0,
+            1,
+            EdgeType::Supports,
+            1.0,
+            1,
+        )],
+        0,
+    )
+    .is_ok()
+}
+
 pub(crate) fn record(
     iteration: usize,
     left: &mut Vec<Duration>,
