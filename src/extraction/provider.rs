@@ -1,4 +1,5 @@
 use super::{ExtractionInput, ExtractionOutput};
+use crate::error::MemoryError;
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +29,15 @@ impl fmt::Display for ExtractionError {
 }
 
 impl Error for ExtractionError {}
+
+impl From<ExtractionError> for MemoryError {
+    fn from(value: ExtractionError) -> Self {
+        Self::Extraction {
+            provider: value.provider,
+            message: value.message,
+        }
+    }
+}
 
 /// Converts source material into typed mentions and relations.
 ///

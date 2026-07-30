@@ -1,10 +1,10 @@
-use crate::{EntityId, FactId};
+use crate::id::{EntityId, FactId};
 use std::{
     collections::{HashMap, hash_map::RandomState},
     hash::{BuildHasher, BuildHasherDefault, Hasher},
 };
 
-pub(super) trait TextId: Clone + Eq {
+pub(crate) trait TextId: Clone + Eq {
     fn text(&self) -> &str;
 }
 
@@ -41,14 +41,14 @@ type FastMap<I> = HashMap<u64, (I, usize), BuildHasherDefault<IdentityHasher>>;
 type CollisionMap<I> = HashMap<u64, Vec<(I, usize)>, BuildHasherDefault<IdentityHasher>>;
 
 #[derive(Debug, Clone)]
-pub(super) struct IdIndex<I> {
+pub(crate) struct IdIndex<I> {
     seed: u64,
     entries: FastMap<I>,
     collisions: CollisionMap<I>,
 }
 
 impl<I: TextId> IdIndex<I> {
-    pub(super) fn with_capacity(capacity: usize) -> Self {
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
         let random = RandomState::new();
         let mut hasher = random.build_hasher();
         hasher.write_u64(0x5756_5452_5849_4458);
@@ -133,7 +133,7 @@ fn fingerprint(seed: u64, bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::IdIndex;
-    use crate::EntityId;
+    use crate::id::EntityId;
 
     #[test]
     fn prehashed_index_preserves_colliding_identifiers() {

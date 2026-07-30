@@ -1,4 +1,4 @@
-use crate::{MemoryError, Result};
+use crate::error::{MemoryError, Result};
 
 pub(super) struct Writer {
     bytes: Vec<u8>,

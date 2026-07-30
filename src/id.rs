@@ -1,4 +1,4 @@
-use crate::{MemoryError, Result};
+use crate::error::{MemoryError, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use std::{fmt, str::FromStr, sync::Arc};
 

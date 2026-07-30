@@ -1,5 +1,9 @@
 use super::{EntityLinker, scoring::exact_key};
-use crate::{MemoryError, MemoryView, Result, extraction::key::normalized};
+use crate::{
+    domain::MemoryView,
+    error::{MemoryError, Result},
+    extraction::key::normalized,
+};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]

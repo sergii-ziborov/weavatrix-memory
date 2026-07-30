@@ -1,4 +1,7 @@
-use crate::{EntityId, MemoryError, Result};
+use crate::{
+    error::{MemoryError, Result},
+    id::EntityId,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

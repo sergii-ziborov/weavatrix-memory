@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-30
+
+### Changed
+
+- Normalized all Rust modules to directory-owned `mod.rs` layouts, removing
+  every competing `foo.rs` plus `foo/` module form without changing the public
+  API.
+- Moved the compact projection snapshot codec behind the storage adapter
+  boundary while preserving the crate-root `CompactSnapshotCodec` export.
+- Replaced facade-routed internal imports with direct owning-module
+  dependencies and moved provider-error conversions to their owning adapters.
+- Split benchmark orchestration to keep every Rust source, test, tool, and
+  benchmark file within 300 physical lines and every function within 100.
+- Added a strict modular architecture contract for temporal model, projection,
+  storage, retrieval, extraction, facade, and verification boundaries with
+  zero runtime cycles and no exceptions or baseline debt.
+- Clarified the crate's role as Weavatrix's protocol-independent temporal
+  memory engine; MCP transport remains owned by the higher-level `weavatrix`
+  product.
+
 ## [0.3.1] - 2026-07-28
 
 ### Changed

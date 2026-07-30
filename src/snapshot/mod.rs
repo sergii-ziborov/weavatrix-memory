@@ -1,10 +1,12 @@
+mod compact;
 mod file;
 mod in_memory;
 
+pub use compact::CompactSnapshotCodec;
 pub use file::{FileSnapshotStore, SnapshotOptions};
 pub use in_memory::InMemorySnapshotStore;
 
-use crate::{ProjectionSnapshot, Result};
+use crate::{error::Result, projection::ProjectionSnapshot};
 
 pub trait SnapshotStore<P> {
     /// Saves an immutable projection snapshot.

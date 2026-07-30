@@ -2,7 +2,10 @@ use super::{
     ContextBundle, ContextCompiler, ContextRequest, FusedRetrievalHit, RetrievalProvider,
     RetrievalQuery, TokenEstimator, fuse_retrieval,
 };
-use crate::{MemoryError, MemoryProjection, Result};
+use crate::{
+    error::{MemoryError, Result},
+    projection::MemoryProjection,
+};
 
 #[derive(Debug, Clone)]
 pub struct RetrievedContextBundle {

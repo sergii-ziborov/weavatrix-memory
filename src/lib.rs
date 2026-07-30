@@ -50,10 +50,12 @@ pub use extraction::{
 pub use graph_projection::project_graph;
 pub use id::{AgentId, EntityId, EventId, FactId, SessionId, StreamId};
 pub use projection::{
-    CompactSnapshotCodec, MemoryProjection, Projection, ProjectionClock, ProjectionSnapshot,
-    ReplayCursor, replay, replay_owned, replay_tracked, resume,
+    MemoryProjection, Projection, ProjectionClock, ProjectionSnapshot, ReplayCursor, replay,
+    replay_owned, replay_tracked, resume,
 };
-pub use snapshot::{FileSnapshotStore, InMemorySnapshotStore, SnapshotOptions, SnapshotStore};
+pub use snapshot::{
+    CompactSnapshotCodec, FileSnapshotStore, InMemorySnapshotStore, SnapshotOptions, SnapshotStore,
+};
 pub use store::{
     AppendReceipt, CatchUpSubscription, Durability, EventStore, ExpectedVersion, FileEventStore,
     FileStoreOptions, InMemoryStore, RecoveryPolicy, SubscriptionCheckpoint,

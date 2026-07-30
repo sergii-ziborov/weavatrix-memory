@@ -1,4 +1,7 @@
-use crate::{MemoryError, Result, store::frame::crc32c};
+use crate::{
+    error::{MemoryError, Result},
+    store::frame::crc32c,
+};
 use std::{fs::File, io::Read, path::Path};
 
 const HEADER: &[u8; 8] = b"WMEMSN01";

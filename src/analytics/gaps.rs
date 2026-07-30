@@ -1,5 +1,11 @@
 use super::{GapKind, GapReport, MemoryAnalytics, ReasoningGap, ReasoningGapRequest};
-use crate::{EntityId, FactId, MemoryError, MemoryProjection, Result, project_graph};
+use crate::{
+    domain::MemoryFact,
+    error::{MemoryError, Result},
+    graph_projection::project_graph,
+    id::{EntityId, FactId},
+    projection::MemoryProjection,
+};
 use std::collections::BTreeMap;
 
 impl MemoryAnalytics {
@@ -84,7 +90,7 @@ fn validate_request(request: ReasoningGapRequest) -> Result<()> {
     Ok(())
 }
 
-fn support_counts(facts: &[crate::MemoryFact]) -> BTreeMap<EntityId, usize> {
+fn support_counts(facts: &[MemoryFact]) -> BTreeMap<EntityId, usize> {
     let mut counts = BTreeMap::new();
     for fact in facts {
         if matches!(
@@ -100,7 +106,7 @@ fn support_counts(facts: &[crate::MemoryFact]) -> BTreeMap<EntityId, usize> {
 fn add_fact_gaps(
     gaps: &mut Vec<ReasoningGap>,
     graph: &weavatrix_graph::Graph,
-    facts: &[crate::MemoryFact],
+    facts: &[MemoryFact],
     request: ReasoningGapRequest,
 ) {
     for fact in facts {
@@ -140,7 +146,7 @@ fn add_unstable_gaps(
     projection: &MemoryProjection,
     request: ReasoningGapRequest,
 ) {
-    let mut revisions = BTreeMap::<(EntityId, String), Vec<&crate::MemoryFact>>::new();
+    let mut revisions = BTreeMap::<(EntityId, String), Vec<&MemoryFact>>::new();
     for fact in projection
         .all_facts()
         .iter()

@@ -2,7 +2,11 @@ use super::{
     MemoryProjection,
     state::{NodeHistory, NodeRevision},
 };
-use crate::{MemoryError, MemoryFact, MemoryNode, Result, Timestamp};
+use crate::{
+    domain::{MemoryFact, MemoryNode},
+    error::{MemoryError, Result},
+    time::Timestamp,
+};
 use std::thread;
 
 #[derive(Clone, Copy)]

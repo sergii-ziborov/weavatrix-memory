@@ -1,4 +1,9 @@
-use crate::{EventId, ExpectedVersion, MemoryError, NewEvent, Result, StreamId};
+use super::super::ExpectedVersion;
+use crate::{
+    error::{MemoryError, Result},
+    event::NewEvent,
+    id::{EventId, StreamId},
+};
 use std::collections::HashSet;
 
 pub(super) fn expected(

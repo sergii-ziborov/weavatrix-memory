@@ -2,7 +2,11 @@ use super::{
     ExtractedEntity, ExtractionInput, LinkCandidate, LinkDecision, LinkMethod, LinkPolicy,
     key::normalized,
 };
-use crate::{Confidence, EntityId, MemoryError, Result};
+use crate::{
+    domain::Confidence,
+    error::{MemoryError, Result},
+    id::EntityId,
+};
 use std::collections::{BTreeMap, HashMap};
 
 mod catalog;

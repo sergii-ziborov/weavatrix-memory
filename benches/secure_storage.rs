@@ -1,9 +1,8 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    hint::black_box,
-    path::PathBuf,
-    time::{Duration, Instant},
+use std::{collections::BTreeMap, fs, hint::black_box, path::PathBuf};
+#[path = "support/secure_storage.rs"]
+mod support;
+use support::{
+    BytesCodec, Samples, elapsed, env_usize, median, record, report, report_codecs, sample_codec,
 };
 use weavatrix_memory::{
     AgentId, Codec, CompactSnapshotCodec, Durability, EntityId, Evidence, FactId,
@@ -13,6 +12,12 @@ use weavatrix_memory::{
 };
 
 const MAX_BYTES: usize = 512 * 1024 * 1024;
+
+struct BenchmarkCodecs {
+    lz4: Lz4Codec<BytesCodec>,
+    encrypted: XChaCha20Codec<BytesCodec, StaticKey>,
+    secure: XChaCha20Codec<Lz4Codec<BytesCodec>, StaticKey>,
+}
 
 fn main() {
     let node_count = env_usize("WEAVATRIX_BENCH_NODES", 10_000);
@@ -30,12 +35,10 @@ fn main() {
         projection: fixture(node_count, edges_per_node, position),
     };
     let compact_bytes = CompactSnapshotCodec.encode(&snapshot).unwrap();
-    let lz4 = Lz4Codec::new(BytesCodec, MAX_BYTES).unwrap();
-    let encrypted = encryption_codec(BytesCodec);
-    let secure = encryption_codec(Lz4Codec::new(BytesCodec, MAX_BYTES).unwrap());
-    let lz4_bytes = lz4.encode(&compact_bytes).unwrap();
-    let encrypted_bytes = encrypted.encode(&compact_bytes).unwrap();
-    let secure_bytes = secure.encode(&compact_bytes).unwrap();
+    let codecs = codecs();
+    let lz4_bytes = codecs.lz4.encode(&compact_bytes).unwrap();
+    let encrypted_bytes = codecs.encrypted.encode(&compact_bytes).unwrap();
+    let secure_bytes = codecs.secure.encode(&compact_bytes).unwrap();
 
     let mut copy_samples = Samples::default();
     let mut lz4_samples = Samples::default();
@@ -52,21 +55,21 @@ fn main() {
             );
             sample_codec(
                 iteration,
-                &lz4,
+                &codecs.lz4,
                 &compact_bytes,
                 &lz4_bytes,
                 &mut lz4_samples,
             );
             sample_codec(
                 iteration,
-                &encrypted,
+                &codecs.encrypted,
                 &compact_bytes,
                 &encrypted_bytes,
                 &mut encrypted_samples,
             );
             sample_codec(
                 iteration,
-                &secure,
+                &codecs.secure,
                 &compact_bytes,
                 &secure_bytes,
                 &mut secure_samples,
@@ -74,21 +77,21 @@ fn main() {
         } else {
             sample_codec(
                 iteration,
-                &secure,
+                &codecs.secure,
                 &compact_bytes,
                 &secure_bytes,
                 &mut secure_samples,
             );
             sample_codec(
                 iteration,
-                &encrypted,
+                &codecs.encrypted,
                 &compact_bytes,
                 &encrypted_bytes,
                 &mut encrypted_samples,
             );
             sample_codec(
                 iteration,
-                &lz4,
+                &codecs.lz4,
                 &compact_bytes,
                 &lz4_bytes,
                 &mut lz4_samples,
@@ -102,16 +105,16 @@ fn main() {
             );
         }
     }
-    copy_samples.report("copy");
-    lz4_samples.report("lz4");
-    encrypted_samples.report("xchacha20");
-    secure_samples.report("lz4_xchacha20");
-    println!(
-        "secure_storage_sizes nodes={node_count} edges={edge_count} compact_bytes={} lz4_bytes={} encrypted_bytes={} secure_bytes={}",
-        compact_bytes.len(),
-        lz4_bytes.len(),
-        encrypted_bytes.len(),
-        secure_bytes.len()
+    report_codecs(
+        node_count,
+        edge_count,
+        [&compact_bytes, &lz4_bytes, &encrypted_bytes, &secure_bytes],
+        [
+            (&mut copy_samples, "copy"),
+            (&mut lz4_samples, "lz4"),
+            (&mut encrypted_samples, "xchacha20"),
+            (&mut secure_samples, "lz4_xchacha20"),
+        ],
     );
     benchmark_snapshot_reads(&snapshot);
 }
@@ -126,50 +129,11 @@ fn encryption_codec<C>(inner: C) -> XChaCha20Codec<C, StaticKey> {
     .unwrap()
 }
 
-#[derive(Default)]
-struct Samples {
-    encode: Vec<Duration>,
-    decode: Vec<Duration>,
-}
-
-impl Samples {
-    fn report(&mut self, name: &str) {
-        report(&format!("{name}_encode"), median(&mut self.encode));
-        report(&format!("{name}_decode"), median(&mut self.decode));
-    }
-}
-
-fn sample_codec<C>(
-    iteration: usize,
-    codec: &C,
-    value: &Vec<u8>,
-    bytes: &[u8],
-    samples: &mut Samples,
-) where
-    C: Codec<Vec<u8>>,
-{
-    record(
-        iteration,
-        &mut samples.encode,
-        elapsed(|| black_box(codec.encode(value).unwrap())),
-    );
-    record(
-        iteration,
-        &mut samples.decode,
-        elapsed(|| black_box(codec.decode(bytes).unwrap())),
-    );
-}
-
-#[derive(Clone, Copy)]
-struct BytesCodec;
-
-impl Codec<Vec<u8>> for BytesCodec {
-    fn encode(&self, value: &Vec<u8>) -> weavatrix_memory::Result<Vec<u8>> {
-        Ok(value.clone())
-    }
-
-    fn decode(&self, bytes: &[u8]) -> weavatrix_memory::Result<Vec<u8>> {
-        Ok(bytes.to_vec())
+fn codecs() -> BenchmarkCodecs {
+    BenchmarkCodecs {
+        lz4: Lz4Codec::new(BytesCodec, MAX_BYTES).unwrap(),
+        encrypted: encryption_codec(BytesCodec),
+        secure: encryption_codec(Lz4Codec::new(BytesCodec, MAX_BYTES).unwrap()),
     }
 }
 
@@ -254,32 +218,4 @@ fn temporary_directory() -> PathBuf {
     }
     fs::create_dir(&path).unwrap();
     path
-}
-
-fn elapsed<T>(operation: impl FnOnce() -> T) -> Duration {
-    let started = Instant::now();
-    black_box(operation());
-    started.elapsed()
-}
-
-fn record(iteration: usize, samples: &mut Vec<Duration>, value: Duration) {
-    if iteration >= 2 {
-        samples.push(value);
-    }
-}
-
-fn median(samples: &mut [Duration]) -> Duration {
-    samples.sort_unstable();
-    samples[samples.len() / 2]
-}
-
-fn report(name: &str, median: Duration) {
-    println!("{name} median_ms={:.3}", median.as_secs_f64() * 1_000.0);
-}
-
-fn env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
 }

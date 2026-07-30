@@ -1,6 +1,8 @@
+use super::{AppendReceipt, EventStore, ExpectedVersion};
 use crate::{
-    AppendReceipt, EventId, EventMetadata, EventStore, ExpectedVersion, MemoryError, NewEvent,
-    Result, StoredEvent, StreamId,
+    error::{MemoryError, Result},
+    event::{EventMetadata, NewEvent, StoredEvent},
+    id::{EventId, StreamId},
 };
 use std::collections::{HashMap, HashSet};
 

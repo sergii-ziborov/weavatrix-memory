@@ -1,5 +1,9 @@
 use super::TextSpan;
-use crate::{Confidence, Result, Timestamp, domain::validate_text};
+use crate::{
+    domain::{Confidence, validate_text},
+    error::Result,
+    time::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

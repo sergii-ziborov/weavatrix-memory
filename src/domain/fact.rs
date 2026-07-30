@@ -1,5 +1,9 @@
 use super::{Confidence, Evidence};
-use crate::{AgentId, EntityId, FactId, MemoryError, Result, SessionId, Timestamp};
+use crate::{
+    error::{MemoryError, Result},
+    id::{AgentId, EntityId, FactId, SessionId},
+    time::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

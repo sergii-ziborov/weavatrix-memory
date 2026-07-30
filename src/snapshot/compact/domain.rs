@@ -1,7 +1,9 @@
 use super::io::{Reader, Writer};
 use crate::{
-    AgentId, Confidence, EntityId, Evidence, FactId, MemoryFact, MemoryNode, Result, SessionId,
-    Timestamp,
+    domain::{Confidence, Evidence, MemoryFact, MemoryNode},
+    error::Result,
+    id::{AgentId, EntityId, FactId, SessionId},
+    time::Timestamp,
 };
 use std::collections::BTreeMap;
 

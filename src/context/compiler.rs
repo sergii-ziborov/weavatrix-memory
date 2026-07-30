@@ -4,8 +4,11 @@ use super::{
     token::{fact_tokens, node_tokens},
 };
 use crate::{
-    EntityId, MemoryError, MemoryFact, MemoryNode, MemoryProjection, MemoryView, ProjectionClock,
-    Result, project_graph,
+    domain::{MemoryFact, MemoryNode, MemoryView},
+    error::{MemoryError, Result},
+    graph_projection::project_graph,
+    id::{EntityId, FactId},
+    projection::{MemoryProjection, ProjectionClock},
 };
 use std::{
     cmp::Reverse,
@@ -108,7 +111,7 @@ where
         &self,
         request: &ContextRequest,
         nodes: &BTreeMap<EntityId, MemoryNode>,
-    ) -> Result<(BTreeSet<crate::EntityId>, usize)> {
+    ) -> Result<(BTreeSet<EntityId>, usize)> {
         let mut selected = BTreeSet::new();
         let mut used = 0;
         let mut seeds = request.seeds.clone();
@@ -133,7 +136,7 @@ where
 
 type Neighborhood<'a> = (
     BTreeMap<EntityId, MemoryNode>,
-    BTreeMap<crate::FactId, &'a MemoryFact>,
+    BTreeMap<FactId, &'a MemoryFact>,
     BTreeMap<EntityId, usize>,
     usize,
 );

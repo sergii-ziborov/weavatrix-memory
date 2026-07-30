@@ -1,19 +1,24 @@
 use super::index::IdIndex;
-use crate::{EntityId, FactId, MemoryError, MemoryFact, MemoryNode, Result, Timestamp};
+use crate::{
+    domain::{MemoryFact, MemoryNode},
+    error::{MemoryError, Result},
+    id::{EntityId, FactId},
+    time::Timestamp,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct NodeRevision {
-    pub(super) node: MemoryNode,
-    pub(super) recorded_at: Timestamp,
-    pub(super) position: u64,
+pub(crate) struct NodeRevision {
+    pub(crate) node: MemoryNode,
+    pub(crate) recorded_at: Timestamp,
+    pub(crate) position: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct NodeHistory {
-    pub(super) first: NodeRevision,
-    pub(super) later: Vec<NodeRevision>,
+pub(crate) struct NodeHistory {
+    pub(crate) first: NodeRevision,
+    pub(crate) later: Vec<NodeRevision>,
 }
 
 impl NodeHistory {
@@ -26,30 +31,30 @@ impl NodeHistory {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Supersession {
-    pub(super) replacement: FactId,
-    pub(super) valid_from: Timestamp,
-    pub(super) recorded_at: Timestamp,
+pub(crate) struct Supersession {
+    pub(crate) replacement: FactId,
+    pub(crate) valid_from: Timestamp,
+    pub(crate) recorded_at: Timestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Retraction {
-    pub(super) valid_until: Timestamp,
-    pub(super) recorded_at: Timestamp,
+pub(crate) struct Retraction {
+    pub(crate) valid_until: Timestamp,
+    pub(crate) recorded_at: Timestamp,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemoryProjection {
-    pub(super) nodes: Vec<NodeHistory>,
-    pub(super) facts: Vec<MemoryFact>,
-    pub(super) node_lookup: IdIndex<EntityId>,
-    pub(super) fact_lookup: IdIndex<FactId>,
-    pub(super) incident_offsets: Vec<usize>,
-    pub(super) incident_facts: Vec<usize>,
-    pub(super) incident_delta: HashMap<usize, Vec<usize>>,
-    pub(super) supersessions: BTreeMap<FactId, Supersession>,
-    pub(super) retractions: BTreeMap<FactId, Retraction>,
-    pub(super) last_global_position: Option<u64>,
+    pub(crate) nodes: Vec<NodeHistory>,
+    pub(crate) facts: Vec<MemoryFact>,
+    pub(crate) node_lookup: IdIndex<EntityId>,
+    pub(crate) fact_lookup: IdIndex<FactId>,
+    pub(crate) incident_offsets: Vec<usize>,
+    pub(crate) incident_facts: Vec<usize>,
+    pub(crate) incident_delta: HashMap<usize, Vec<usize>>,
+    pub(crate) supersessions: BTreeMap<FactId, Supersession>,
+    pub(crate) retractions: BTreeMap<FactId, Retraction>,
+    pub(crate) last_global_position: Option<u64>,
 }
 
 impl MemoryProjection {
@@ -68,7 +73,7 @@ impl MemoryProjection {
         }
     }
 
-    pub(super) fn rebuild_indexes(&mut self) -> Result<()> {
+    pub(crate) fn rebuild_indexes(&mut self) -> Result<()> {
         self.node_lookup.reserve(self.nodes.len());
         for (index, revisions) in self.nodes.iter().enumerate() {
             for revision in core::iter::once(&revisions.first).chain(&revisions.later) {

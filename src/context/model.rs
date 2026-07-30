@@ -1,4 +1,9 @@
-use crate::{EntityId, MemoryView, Result, Timestamp};
+use crate::{
+    domain::MemoryView,
+    error::{MemoryError, Result},
+    id::EntityId,
+    time::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use weavatrix_graph::Graph;
@@ -31,13 +36,13 @@ impl ContextRequest {
         token_budget: usize,
     ) -> Result<Self> {
         if seeds.is_empty() {
-            return Err(crate::MemoryError::InvalidValue {
+            return Err(MemoryError::InvalidValue {
                 field: "context.seeds",
                 reason: "at least one seed is required",
             });
         }
         if token_budget == 0 {
-            return Err(crate::MemoryError::InvalidValue {
+            return Err(MemoryError::InvalidValue {
                 field: "context.token_budget",
                 reason: "must be greater than zero",
             });
@@ -65,7 +70,7 @@ impl ContextRequest {
         token_budget: usize,
     ) -> Result<Self> {
         if token_budget == 0 {
-            return Err(crate::MemoryError::InvalidValue {
+            return Err(MemoryError::InvalidValue {
                 field: "context.token_budget",
                 reason: "must be greater than zero",
             });

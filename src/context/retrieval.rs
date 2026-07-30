@@ -1,4 +1,5 @@
-use crate::EntityId;
+use crate::error::MemoryError;
+use crate::id::EntityId;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -127,6 +128,15 @@ impl fmt::Display for RetrievalError {
 }
 
 impl std::error::Error for RetrievalError {}
+
+impl From<RetrievalError> for MemoryError {
+    fn from(value: RetrievalError) -> Self {
+        Self::Retrieval {
+            provider: value.provider,
+            message: value.message,
+        }
+    }
+}
 
 pub type RetrievalResult<T> = core::result::Result<T, RetrievalError>;
 

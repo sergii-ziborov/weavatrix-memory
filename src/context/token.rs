@@ -1,4 +1,7 @@
-use crate::{MemoryError, MemoryFact, MemoryNode, Result};
+use crate::{
+    domain::{MemoryFact, MemoryNode},
+    error::{MemoryError, Result},
+};
 
 pub trait TokenEstimator {
     fn estimate(&self, value: &str) -> usize;

@@ -1,5 +1,5 @@
 use super::ContextRequest;
-use crate::MemoryNode;
+use crate::domain::MemoryNode;
 
 pub(super) fn node_allowed(request: &ContextRequest, node: &MemoryNode) -> bool {
     (request.repositories.is_empty()

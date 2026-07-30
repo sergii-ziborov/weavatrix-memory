@@ -7,7 +7,11 @@ pub use file::{Durability, FileEventStore, FileStoreOptions, RecoveryPolicy};
 pub use in_memory::InMemoryStore;
 pub use subscription::{CatchUpSubscription, SubscriptionCheckpoint};
 
-use crate::{NewEvent, Result, StoredEvent, StreamId};
+use crate::{
+    error::Result,
+    event::{NewEvent, StoredEvent},
+    id::StreamId,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AppendReceipt {

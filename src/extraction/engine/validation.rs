@@ -1,5 +1,5 @@
 use super::super::{ExtractionInput, ExtractionOutput, TextSpan};
-use crate::{MemoryError, Result};
+use crate::error::{MemoryError, Result};
 use std::collections::BTreeSet;
 
 pub(super) fn validate_output(output: &ExtractionOutput, input: &ExtractionInput) -> Result<()> {

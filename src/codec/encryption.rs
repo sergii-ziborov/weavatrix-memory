@@ -1,4 +1,5 @@
-use crate::{Codec, MemoryError, Result};
+use super::Codec;
+use crate::error::{MemoryError, Result};
 use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, AeadInOut, KeyInit, Payload},

@@ -1,5 +1,8 @@
 use super::EventStore;
-use crate::{MemoryError, Result, StoredEvent};
+use crate::{
+    error::{MemoryError, Result},
+    event::StoredEvent,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

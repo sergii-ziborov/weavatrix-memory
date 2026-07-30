@@ -1,5 +1,10 @@
 use super::SnapshotStore;
-use crate::{Codec, Durability, MemoryError, ProjectionSnapshot, Result};
+use crate::{
+    codec::Codec,
+    error::{MemoryError, Result},
+    projection::ProjectionSnapshot,
+    store::Durability,
+};
 use std::{
     fs::{self, OpenOptions},
     io::Write,

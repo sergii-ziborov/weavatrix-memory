@@ -1,5 +1,11 @@
 use super::{ConsolidationAction, ConsolidationKind, ConsolidationPlan, MemoryAnalytics};
-use crate::{EntityId, MemoryError, MemoryProjection, ProjectionClock, Result, project_graph};
+use crate::{
+    domain::MemoryFact,
+    error::{MemoryError, Result},
+    graph_projection::project_graph,
+    id::EntityId,
+    projection::{MemoryProjection, ProjectionClock},
+};
 use std::collections::BTreeMap;
 
 impl MemoryAnalytics {
@@ -49,8 +55,8 @@ impl MemoryAnalytics {
     }
 }
 
-fn duplicate_actions(facts: &[crate::MemoryFact]) -> Vec<ConsolidationAction> {
-    let mut groups = BTreeMap::<(EntityId, String, EntityId), Vec<&crate::MemoryFact>>::new();
+fn duplicate_actions(facts: &[MemoryFact]) -> Vec<ConsolidationAction> {
+    let mut groups = BTreeMap::<(EntityId, String, EntityId), Vec<&MemoryFact>>::new();
     for fact in facts {
         groups
             .entry((
@@ -107,7 +113,7 @@ fn revision_actions(
     projection: &MemoryProjection,
     clock: ProjectionClock,
 ) -> Vec<ConsolidationAction> {
-    let mut groups = BTreeMap::<(EntityId, String), Vec<&crate::MemoryFact>>::new();
+    let mut groups = BTreeMap::<(EntityId, String), Vec<&MemoryFact>>::new();
     for fact in projection
         .all_facts()
         .iter()

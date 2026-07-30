@@ -2,7 +2,7 @@ use super::super::{
     ExtractedEntity, ExtractionInput, LinkCandidate, LinkDecision, LinkMethod,
     key::{normalized, slug, stable_hash},
 };
-use crate::{Confidence, EntityId, Result};
+use crate::{domain::Confidence, error::Result, id::EntityId};
 
 pub(super) fn decision(
     mention: &ExtractedEntity,

@@ -1,7 +1,10 @@
 use super::{
     BeliefRevisionReport, BeliefRevisionRequest, CascadeEffect, Contradiction, MemoryAnalytics,
 };
-use crate::{EntityId, MemoryProjection, Result, project_graph};
+use crate::{
+    domain::MemoryFact, error::Result, graph_projection::project_graph, id::EntityId,
+    projection::MemoryProjection,
+};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 impl MemoryAnalytics {
@@ -63,10 +66,7 @@ impl MemoryAnalytics {
     }
 }
 
-fn contradiction(
-    fact: &crate::MemoryFact,
-    hypothesis: &crate::MemoryFact,
-) -> Option<Contradiction> {
+fn contradiction(fact: &MemoryFact, hypothesis: &MemoryFact) -> Option<Contradiction> {
     let competing = fact.source == hypothesis.source
         && fact.relation == hypothesis.relation
         && fact.target != hypothesis.target;

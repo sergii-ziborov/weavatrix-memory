@@ -1,6 +1,8 @@
 use crate::{
-    AgentId, Confidence, EntityId, MemoryError, Result, SessionId, Timestamp,
-    domain::{validate_optional_text, validate_text},
+    domain::{Confidence, validate_optional_text, validate_text},
+    error::{MemoryError, Result},
+    id::{AgentId, EntityId, SessionId},
+    time::Timestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

@@ -2,7 +2,10 @@ mod build;
 mod validation;
 
 use super::{EntityLinker, ExtractionInput, ExtractionPlan, ExtractionProvider, LinkPolicy};
-use crate::{MemoryError, MemoryView, Result};
+use crate::{
+    domain::MemoryView,
+    error::{MemoryError, Result},
+};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AutoExtractionEngine {

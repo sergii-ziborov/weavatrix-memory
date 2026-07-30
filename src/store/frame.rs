@@ -1,4 +1,8 @@
-use crate::{Codec, MemoryError, Result, StoredEvent};
+use crate::{
+    codec::Codec,
+    error::{MemoryError, Result},
+    event::StoredEvent,
+};
 use std::io::{Read, Seek, SeekFrom};
 
 pub(super) const FILE_HEADER: &[u8; 8] = b"WMEMLOG1";

@@ -1,4 +1,8 @@
-use crate::{Confidence as MemoryConfidence, MemoryView, Result};
+use crate::{
+    domain::{Confidence as MemoryConfidence, MemoryView},
+    error::{MemoryError, Result},
+    id::EntityId,
+};
 use std::{collections::BTreeMap, str::FromStr};
 use weavatrix_graph::{
     AttributeValue, Confidence, Edge, EdgeKind, EvidenceKind, Graph, Node, NodeId, NodeKind,
@@ -85,10 +89,10 @@ pub fn project_graph(view: &MemoryView) -> Result<Graph> {
     Ok(Graph::try_from_sorted_nodes(nodes, edges)?)
 }
 
-fn endpoint(ids: &BTreeMap<crate::EntityId, NodeId>, id: &crate::EntityId) -> Result<NodeId> {
+fn endpoint(ids: &BTreeMap<EntityId, NodeId>, id: &EntityId) -> Result<NodeId> {
     ids.get(id)
         .cloned()
-        .ok_or_else(|| crate::MemoryError::MissingEntity { id: id.to_string() })
+        .ok_or_else(|| MemoryError::MissingEntity { id: id.to_string() })
 }
 
 const fn graph_confidence(confidence: MemoryConfidence) -> Confidence {

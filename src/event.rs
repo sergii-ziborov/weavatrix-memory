@@ -1,4 +1,8 @@
-use crate::{AgentId, EventId, MemoryError, Result, SessionId, StreamId, Timestamp};
+use crate::{
+    error::{MemoryError, Result},
+    id::{AgentId, EventId, SessionId, StreamId},
+    time::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

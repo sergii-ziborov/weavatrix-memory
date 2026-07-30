@@ -1,4 +1,8 @@
-use crate::{EventId, MemoryError, Result, StoredEvent, StreamId};
+use crate::{
+    error::{MemoryError, Result},
+    event::StoredEvent,
+    id::{EventId, StreamId},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 

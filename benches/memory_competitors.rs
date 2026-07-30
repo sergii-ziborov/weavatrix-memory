@@ -1,144 +1,74 @@
-use agentic_memory::{
-    CognitiveEvent, CognitiveEventBuilder, Edge as AgenticEdge, EdgeType, EventType, MemoryGraph,
-    QueryEngine,
-};
-#[path = "memory_competitors/support.rs"]
+use agentic_memory::{CognitiveEvent, Edge as AgenticEdge, MemoryGraph, QueryEngine};
+#[path = "support/memory_competitors_fixtures.rs"]
+mod fixtures;
+#[path = "support/memory_competitors.rs"]
 mod support;
-use std::{hint::black_box, time::Instant};
+use fixtures::{agentic_fixture, weavatrix_fixture};
+use std::{
+    hint::black_box,
+    time::{Duration, Instant},
+};
 use support::{agentic_accepts_dangling_edge, env_usize, median, record, report};
 use weavatrix_memory::{
-    AgentId, ContextCompiler, ContextRequest, EntityId, EventId, EventStore, Evidence,
-    ExpectedVersion, FactId, InMemoryStore, MemoryEvent, MemoryFact, MemoryNode, MemoryProjection,
-    NewEvent, SessionId, StoredEvent, StreamId, Timestamp, replay,
+    ContextCompiler, ContextRequest, EntityId, MemoryEvent, MemoryProjection, MemoryView,
+    ProjectionClock, StoredEvent, Timestamp, replay,
 };
 
-#[allow(clippy::too_many_lines)]
+struct BuildSamples {
+    replay: Vec<Duration>,
+    from_parts: Vec<Duration>,
+    competitor: Vec<Duration>,
+}
+
+struct ContextSamples {
+    ours: Vec<Duration>,
+    competitor: Vec<Duration>,
+    sizes: (usize, usize, usize, usize),
+}
+
 fn main() {
     let node_count = env_usize("WEAVATRIX_BENCH_NODES", 10_000);
     let edges_per_node = env_usize("WEAVATRIX_BENCH_EDGES_PER_NODE", 3);
     let weavatrix_events = weavatrix_fixture(node_count, edges_per_node);
     let (agentic_nodes, agentic_edges) = agentic_fixture(node_count, edges_per_node);
     let replayed = replay::<_, MemoryProjection>(&weavatrix_events).unwrap();
-    let current = replayed.view(weavatrix_memory::ProjectionClock::new(
-        Timestamp::from_unix_micros(i64::MAX),
-        Timestamp::from_unix_micros(i64::MAX),
-    ));
-
-    let mut weavatrix_build = Vec::new();
-    let mut weavatrix_parts_build = Vec::new();
-    let mut agentic_build = Vec::new();
-    for iteration in 0..11 {
-        let started = Instant::now();
-        let projection = replay::<_, MemoryProjection>(&weavatrix_events).unwrap();
-        let weavatrix_elapsed = started.elapsed();
-
-        let nodes = current.nodes.clone();
-        let facts = current.facts.clone();
-        let started = Instant::now();
-        let parts_projection = MemoryProjection::try_from_parts(
-            nodes,
-            facts,
-            Timestamp::from_unix_micros(i64::MAX),
-            Some((node_count * (edges_per_node + 1) - 1) as u64),
-        )
-        .unwrap();
-        let weavatrix_parts_elapsed = started.elapsed();
-
-        let nodes = agentic_nodes.clone();
-        let edges = agentic_edges.clone();
-        let started = Instant::now();
-        let graph = MemoryGraph::from_parts(nodes, edges, 0).unwrap();
-        let agentic_elapsed = started.elapsed();
-        black_box((projection, parts_projection, graph));
-        if iteration >= 2 {
-            weavatrix_parts_build.push(weavatrix_parts_elapsed);
-        }
-        record(
-            iteration,
-            &mut weavatrix_build,
-            weavatrix_elapsed,
-            &mut agentic_build,
-            agentic_elapsed,
-        );
-    }
-
-    let projection = replay::<_, MemoryProjection>(&weavatrix_events).unwrap();
-    let clock = weavatrix_memory::ProjectionClock::new(
+    let clock = ProjectionClock::new(
         Timestamp::from_unix_micros(i64::MAX),
         Timestamp::from_unix_micros(i64::MAX),
     );
-    let mut view_samples = Vec::new();
-    let mut view_ref_samples = Vec::new();
-    for iteration in 0..11 {
-        let started = Instant::now();
-        black_box(projection.view(clock));
-        if iteration >= 2 {
-            view_samples.push(started.elapsed());
-        }
-        let started = Instant::now();
-        black_box(projection.view_ref(clock));
-        if iteration >= 2 {
-            view_ref_samples.push(started.elapsed());
-        }
-    }
-    let agentic_graph = MemoryGraph::from_parts(agentic_nodes, agentic_edges, 0).unwrap();
-    let request = ContextRequest::new(
-        vec![EntityId::new(format!("node:{}", node_count / 2)).unwrap()],
-        Timestamp::from_unix_micros(i64::MAX),
-        Timestamp::from_unix_micros(i64::MAX),
-        100_000,
-    )
-    .unwrap()
-    .with_max_depth(2);
-    let compiler = ContextCompiler::default();
-    let query_engine = QueryEngine::new();
-    let mut weavatrix_context = Vec::new();
-    let mut agentic_context = Vec::new();
-    let mut result_sizes = None;
-    for iteration in 0..11 {
-        let started = Instant::now();
-        let ours = compiler.compile(&projection, &request).unwrap();
-        let weavatrix_elapsed = started.elapsed();
+    let current = replayed.view(clock);
+    let mut builds = benchmark_builds(
+        node_count,
+        edges_per_node,
+        &weavatrix_events,
+        &current,
+        &agentic_nodes,
+        &agentic_edges,
+    );
 
-        let started = Instant::now();
-        let theirs = query_engine
-            .context(&agentic_graph, (node_count / 2) as u64, 2)
-            .unwrap();
-        let agentic_elapsed = started.elapsed();
-        result_sizes = Some((
-            ours.graph.node_count(),
-            ours.graph.edge_count(),
-            theirs.nodes.len(),
-            theirs.edges.len(),
-        ));
-        black_box((ours, theirs));
-        record(
-            iteration,
-            &mut weavatrix_context,
-            weavatrix_elapsed,
-            &mut agentic_context,
-            agentic_elapsed,
-        );
-    }
+    let projection = replay::<_, MemoryProjection>(&weavatrix_events).unwrap();
+    let (mut view_samples, mut view_ref_samples) = benchmark_views(&projection, clock);
+    let mut contexts =
+        benchmark_contexts(node_count, &projection, agentic_nodes, agentic_edges, clock);
 
     let edge_count = node_count * edges_per_node;
     report(
         "weavatrix_replay_projection",
         node_count,
         edge_count,
-        median(&mut weavatrix_build),
+        median(&mut builds.replay),
     );
     report(
         "weavatrix_try_from_parts",
         node_count,
         edge_count,
-        median(&mut weavatrix_parts_build),
+        median(&mut builds.from_parts),
     );
     report(
         "agentic_memory_from_parts",
         node_count,
         edge_count,
-        median(&mut agentic_build),
+        median(&mut builds.competitor),
     );
     report(
         "weavatrix_full_view",
@@ -156,15 +86,15 @@ fn main() {
         "weavatrix_context_depth2",
         node_count,
         edge_count,
-        median(&mut weavatrix_context),
+        median(&mut contexts.ours),
     );
     report(
         "agentic_memory_context_depth2",
         node_count,
         edge_count,
-        median(&mut agentic_context),
+        median(&mut contexts.competitor),
     );
-    let (our_nodes, our_edges, their_nodes, their_edges) = result_sizes.unwrap();
+    let (our_nodes, our_edges, their_nodes, their_edges) = contexts.sizes;
     assert_eq!(
         (our_nodes, our_edges),
         (their_nodes, their_edges),
@@ -179,106 +109,120 @@ fn main() {
     );
 }
 
-fn weavatrix_fixture(node_count: usize, edges_per_node: usize) -> Vec<StoredEvent<MemoryEvent>> {
-    let agent = AgentId::new("bench-agent").unwrap();
-    let session = SessionId::new("bench-session").unwrap();
-    let evidence = Evidence::new("benchmark", "memory-competitors").unwrap();
-    let mut pending = Vec::with_capacity(node_count * (edges_per_node + 1));
-    for index in 0..node_count {
-        pending.push(new_event(
-            pending.len(),
-            &agent,
-            &session,
-            MemoryEvent::NodeUpserted {
-                node: MemoryNode::new(
-                    EntityId::new(format!("node:{index}")).unwrap(),
-                    "observation",
-                    format!("benchmark node {index}"),
-                )
-                .unwrap(),
-            },
-        ));
-    }
-    for source in 0..node_count {
-        for offset in 1..=edges_per_node {
-            let target = (source + offset) % node_count;
-            let fact = MemoryFact::new(
-                FactId::new(format!("fact:{source}:{target}")).unwrap(),
-                EntityId::new(format!("node:{source}")).unwrap(),
-                "supports",
-                EntityId::new(format!("node:{target}")).unwrap(),
-                Timestamp::from_unix_micros(1),
-                Timestamp::from_unix_micros(1),
-                agent.clone(),
-                session.clone(),
-                evidence.clone(),
-            )
-            .unwrap();
-            pending.push(new_event(
-                pending.len(),
-                &agent,
-                &session,
-                MemoryEvent::FactRecorded { fact },
-            ));
-        }
-    }
-    let mut store = InMemoryStore::default();
-    store
-        .append_owned(
-            &StreamId::new("benchmark").unwrap(),
-            ExpectedVersion::NoStream,
-            pending,
-        )
-        .unwrap();
-    store.load_all(None, usize::MAX)
-}
-
-fn new_event(
-    index: usize,
-    agent: &AgentId,
-    session: &SessionId,
-    payload: MemoryEvent,
-) -> NewEvent<MemoryEvent> {
-    NewEvent::new(
-        EventId::new(format!("event:{index}")).unwrap(),
-        payload.event_type(),
-        Timestamp::from_unix_micros(1),
-        Timestamp::from_unix_micros(1),
-        agent.clone(),
-        session.clone(),
-        payload,
-    )
-    .unwrap()
-}
-
-fn agentic_fixture(
+fn benchmark_builds(
     node_count: usize,
     edges_per_node: usize,
-) -> (Vec<CognitiveEvent>, Vec<AgenticEdge>) {
-    let nodes = (0..node_count)
-        .map(|index| {
-            let mut event =
-                CognitiveEventBuilder::new(EventType::Fact, format!("benchmark node {index}"))
-                    .session_id(1)
-                    .created_at(1)
-                    .build();
-            event.id = index as u64;
-            event.feature_vec.clear();
-            event
-        })
-        .collect();
-    let mut edges = Vec::with_capacity(node_count * edges_per_node);
-    for source in 0..node_count {
-        for offset in 1..=edges_per_node {
-            let target = (source + offset) % node_count;
-            edges.push(AgenticEdge::with_timestamp(
-                source as u64,
-                target as u64,
-                EdgeType::Supports,
-                1.0,
-                1,
-            ));
+    events: &[StoredEvent<MemoryEvent>],
+    current: &MemoryView,
+    agentic_nodes: &[CognitiveEvent],
+    agentic_edges: &[AgenticEdge],
+) -> BuildSamples {
+    let mut samples = BuildSamples {
+        replay: Vec::new(),
+        from_parts: Vec::new(),
+        competitor: Vec::new(),
+    };
+    for iteration in 0..11 {
+        let started = Instant::now();
+        let projection = replay::<_, MemoryProjection>(events).unwrap();
+        let replay_elapsed = started.elapsed();
+
+        let started = Instant::now();
+        let parts_projection = MemoryProjection::try_from_parts(
+            current.nodes.clone(),
+            current.facts.clone(),
+            Timestamp::from_unix_micros(i64::MAX),
+            Some((node_count * (edges_per_node + 1) - 1) as u64),
+        )
+        .unwrap();
+        let parts_elapsed = started.elapsed();
+
+        let started = Instant::now();
+        let graph =
+            MemoryGraph::from_parts(agentic_nodes.to_vec(), agentic_edges.to_vec(), 0).unwrap();
+        let competitor_elapsed = started.elapsed();
+        black_box((projection, parts_projection, graph));
+        if iteration >= 2 {
+            samples.from_parts.push(parts_elapsed);
+        }
+        record(
+            iteration,
+            &mut samples.replay,
+            replay_elapsed,
+            &mut samples.competitor,
+            competitor_elapsed,
+        );
+    }
+    samples
+}
+
+fn benchmark_views(
+    projection: &MemoryProjection,
+    clock: ProjectionClock,
+) -> (Vec<Duration>, Vec<Duration>) {
+    let mut owned = Vec::new();
+    let mut borrowed = Vec::new();
+    for iteration in 0..11 {
+        let started = Instant::now();
+        black_box(projection.view(clock));
+        if iteration >= 2 {
+            owned.push(started.elapsed());
+        }
+        let started = Instant::now();
+        black_box(projection.view_ref(clock));
+        if iteration >= 2 {
+            borrowed.push(started.elapsed());
         }
     }
-    (nodes, edges)
+    (owned, borrowed)
+}
+
+fn benchmark_contexts(
+    node_count: usize,
+    projection: &MemoryProjection,
+    agentic_nodes: Vec<CognitiveEvent>,
+    agentic_edges: Vec<AgenticEdge>,
+    clock: ProjectionClock,
+) -> ContextSamples {
+    let agentic_graph = MemoryGraph::from_parts(agentic_nodes, agentic_edges, 0).unwrap();
+    let request = ContextRequest::new(
+        vec![EntityId::new(format!("node:{}", node_count / 2)).unwrap()],
+        clock.valid_at,
+        clock.known_at,
+        100_000,
+    )
+    .unwrap()
+    .with_max_depth(2);
+    let compiler = ContextCompiler::default();
+    let query_engine = QueryEngine::new();
+    let mut samples = ContextSamples {
+        ours: Vec::new(),
+        competitor: Vec::new(),
+        sizes: (0, 0, 0, 0),
+    };
+    for iteration in 0..11 {
+        let started = Instant::now();
+        let ours = compiler.compile(projection, &request).unwrap();
+        let ours_elapsed = started.elapsed();
+        let started = Instant::now();
+        let theirs = query_engine
+            .context(&agentic_graph, (node_count / 2) as u64, 2)
+            .unwrap();
+        let competitor_elapsed = started.elapsed();
+        samples.sizes = (
+            ours.graph.node_count(),
+            ours.graph.edge_count(),
+            theirs.nodes.len(),
+            theirs.edges.len(),
+        );
+        black_box((ours, theirs));
+        record(
+            iteration,
+            &mut samples.ours,
+            ours_elapsed,
+            &mut samples.competitor,
+            competitor_elapsed,
+        );
+    }
+    samples
 }

@@ -1,4 +1,6 @@
-use crate::Result;
+#[cfg(feature = "json")]
+use crate::error::MemoryError;
+use crate::error::Result;
 
 #[cfg(feature = "compression")]
 mod compression;
@@ -39,13 +41,13 @@ where
     T: serde::Serialize + serde::de::DeserializeOwned,
 {
     fn encode(&self, value: &T) -> Result<Vec<u8>> {
-        blazingly_json::to_vec(value).map_err(|error| crate::MemoryError::Codec {
+        blazingly_json::to_vec(value).map_err(|error| MemoryError::Codec {
             message: error.to_string(),
         })
     }
 
     fn decode(&self, bytes: &[u8]) -> Result<T> {
-        blazingly_json::from_slice(bytes).map_err(|error| crate::MemoryError::Codec {
+        blazingly_json::from_slice(bytes).map_err(|error| MemoryError::Codec {
             message: error.to_string(),
         })
     }

@@ -1,0 +1,106 @@
+{
+  "architectureContractV": 1,
+  "name": "Weavatrix Memory temporal evidence engine",
+  "style": "modular-layered",
+  "enforcement": "strict",
+  "components": [
+    {
+      "id": "temporal-model",
+      "name": "Bitemporal evidence and identity model",
+      "paths": [
+        "src/domain",
+        "src/error.rs",
+        "src/event.rs",
+        "src/id.rs",
+        "src/time.rs"
+      ]
+    },
+    {
+      "id": "projection",
+      "name": "Deterministic event projection",
+      "paths": ["src/projection", "src/graph_projection.rs"]
+    },
+    {
+      "id": "storage",
+      "name": "Event and snapshot storage adapters",
+      "paths": [
+        "src/codec",
+        "src/store",
+        "src/snapshot"
+      ]
+    },
+    {
+      "id": "retrieval",
+      "name": "Context retrieval, analytics, and evaluation",
+      "paths": ["src/context", "src/analytics", "src/evaluation.rs"]
+    },
+    {
+      "id": "extraction",
+      "name": "Evidence extraction and entity linking",
+      "paths": ["src/extraction"]
+    },
+    {
+      "id": "facade",
+      "name": "Public crate facade",
+      "paths": ["src/lib.rs"]
+    },
+    {
+      "id": "verification",
+      "name": "Integration tests, benchmarks, and evaluation CLI",
+      "paths": ["tests", "benches", "tools"]
+    }
+  ],
+  "dependencyRules": [
+    {
+      "id": "temporal-model-is-inward",
+      "action": "forbid",
+      "from": ["temporal-model"],
+      "to": ["projection", "storage", "retrieval", "extraction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "projection-is-storage-independent",
+      "action": "forbid",
+      "from": ["projection"],
+      "to": ["storage", "retrieval", "extraction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "storage-does-not-own-use-cases",
+      "action": "forbid",
+      "from": ["storage"],
+      "to": ["retrieval", "extraction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "retrieval-does-not-own-adapters",
+      "action": "forbid",
+      "from": ["retrieval"],
+      "to": ["storage", "extraction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "extraction-does-not-own-adapters",
+      "action": "forbid",
+      "from": ["extraction"],
+      "to": ["storage", "retrieval", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    }
+  ],
+  "budgets": {
+    "runtimeCycles": 0,
+    "maxFileLoc": 300,
+    "maxFunctionLoc": 100
+  },
+  "technologies": {
+    "required": ["rust"],
+    "forbidden": ["unsafe-rust"]
+  },
+  "exceptions": [],
+  "ratchet": {
+    "baseline": {
+      "fingerprints": [],
+      "metrics": {}
+    }
+  }
+}

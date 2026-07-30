@@ -4,8 +4,10 @@ use super::super::{
     key::stable_hash,
 };
 use crate::{
-    Confidence, EntityId, EventId, Evidence, FactId, MemoryError, MemoryEvent, MemoryFact,
-    MemoryNode, NewEvent, Result,
+    domain::{Confidence, Evidence, MemoryEvent, MemoryFact, MemoryNode},
+    error::{MemoryError, Result},
+    event::NewEvent,
+    id::{EntityId, EventId, FactId},
 };
 use std::collections::BTreeMap;
 

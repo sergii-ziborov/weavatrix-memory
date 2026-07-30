@@ -1,5 +1,5 @@
 use super::{Evidence, MemoryFact, MemoryNode};
-use crate::{FactId, Timestamp};
+use crate::{id::FactId, time::Timestamp};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

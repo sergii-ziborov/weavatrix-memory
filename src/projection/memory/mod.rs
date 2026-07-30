@@ -1,18 +1,18 @@
 mod apply;
-mod binary;
-mod index;
+pub(crate) mod index;
 mod parts;
-mod state;
+pub(crate) mod state;
 
 use crate::{
-    EntityId, FactId, MemoryError, MemoryFact, MemoryNode, MemoryView, MemoryViewRef, Result,
-    Timestamp,
+    domain::{Evidence, MemoryFact, MemoryNode, MemoryView, MemoryViewRef},
+    error::{MemoryError, Result},
+    id::{EntityId, FactId},
+    time::Timestamp,
 };
 use serde::{Deserialize, Serialize};
 use state::{NodeHistory, NodeRevision, Retraction, Supersession};
 use std::collections::HashSet;
 
-pub use binary::CompactSnapshotCodec;
 pub use state::MemoryProjection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,7 +193,7 @@ impl MemoryProjection {
         recorded_at: Timestamp,
         fact_id: &FactId,
         valid_until: Timestamp,
-        evidence: &[crate::Evidence],
+        evidence: &[Evidence],
     ) -> Result<()> {
         let fact = self.fact(fact_id).ok_or_else(|| MemoryError::MissingFact {
             id: fact_id.to_string(),
@@ -210,7 +210,7 @@ impl MemoryProjection {
                 reason: "at least one evidence item is required",
             });
         }
-        evidence.iter().try_for_each(crate::Evidence::validate)?;
+        evidence.iter().try_for_each(Evidence::validate)?;
         self.retractions.insert(
             fact_id.clone(),
             Retraction {

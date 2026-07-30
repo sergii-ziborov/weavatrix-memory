@@ -1,9 +1,9 @@
 [package]
 name = "weavatrix-memory"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.89"
-description = "Event-sourced, bitemporal context compiler for coding agents"
+description = "Event-sourced bitemporal evidence memory and budgeted context retrieval for coding agents"
 license = "MIT"
 authors = ["Sergii Ziborov <sergii.ziborov@gmail.com>"]
 homepage = "https://weavatrix.com"

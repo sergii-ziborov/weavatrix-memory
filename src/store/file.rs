@@ -1,8 +1,14 @@
+use super::AppendReceipt;
 use super::{
     EventStore, ExpectedVersion, InMemoryStore,
     frame::{self, ScanOutcome},
 };
-use crate::{AppendReceipt, Codec, MemoryError, NewEvent, Result, StoredEvent, StreamId};
+use crate::{
+    codec::Codec,
+    error::{MemoryError, Result},
+    event::{NewEvent, StoredEvent},
+    id::StreamId,
+};
 use std::{
     fs::{File, OpenOptions, TryLockError},
     io::{Seek, SeekFrom, Write},

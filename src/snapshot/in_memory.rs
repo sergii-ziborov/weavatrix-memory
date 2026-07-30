@@ -1,5 +1,8 @@
 use super::SnapshotStore;
-use crate::{MemoryError, ProjectionSnapshot, Result};
+use crate::{
+    error::{MemoryError, Result},
+    projection::ProjectionSnapshot,
+};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default)]

@@ -1,11 +1,19 @@
 mod domain;
 mod io;
 
-use super::{
-    index::IdIndex,
-    state::{MemoryProjection, NodeHistory, NodeRevision, Retraction, Supersession},
+use crate::{
+    codec::Codec,
+    error::Result,
+    id::{FactId, StreamId},
+    projection::{
+        ProjectionSnapshot, ReplayCursor,
+        memory::{
+            index::IdIndex,
+            state::{MemoryProjection, NodeHistory, NodeRevision, Retraction, Supersession},
+        },
+    },
+    time::Timestamp,
 };
-use crate::{Codec, FactId, ProjectionSnapshot, ReplayCursor, Result, StreamId, Timestamp};
 use domain::{read_fact, read_node, write_fact, write_node};
 use io::{Reader, Writer, codec};
 use std::collections::{BTreeMap, HashMap};

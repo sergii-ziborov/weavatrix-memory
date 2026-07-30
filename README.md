@@ -1,13 +1,19 @@
 # Weavatrix Memory
 
-`weavatrix-memory` is an event-sourced, bitemporal context compiler for coding
-agents. It turns immutable code, task, decision, test, failure, and handoff
-events into small evidence-carrying graphs for a specific task and token budget.
+`weavatrix-memory` is the event-sourced temporal evidence and context-retrieval
+engine used by Weavatrix. It turns immutable code, task, decision, test,
+failure, and handoff events into small evidence-carrying graphs for a specific
+task and token budget.
 
-The crate is a standalone MIT-licensed module of Weavatrix Rust Core. Its
-deterministic core does not require an LLM, vector database, external graph
-database, async runtime, system clock, or Git executable. Durable storage is
-available without requiring a database.
+The crate is a standalone MIT-licensed Rust library. `weavatrix-rust` composes
+it into the wider repository-intelligence engine, while the `weavatrix`
+product exposes that engine through MCP. This crate owns temporal memory,
+projection, persistence contracts, retrieval, and context compilation; it does
+not own MCP transport or a long-running server.
+
+Its deterministic core does not require an LLM, vector database, external
+graph database, async runtime, system clock, or Git executable. Durable storage
+is available without requiring a database.
 The minimum supported Rust version is 1.89.
 
 ## Why it exists
@@ -95,7 +101,25 @@ budgeted context compiler + receipt
 
 The in-memory and filesystem stores implement the same `EventStore` contract.
 Database, Git, lexical, semantic, and MCP adapters belong behind separate
-interfaces or higher-level Weavatrix Rust Core modules.
+interfaces or higher-level Weavatrix modules.
+
+The source tree follows enforced inward dependencies:
+
+| Layer | Owns | Allowed inward dependencies |
+| --- | --- | --- |
+| Temporal model | IDs, timestamps, events, evidence, facts, views, shared errors | None |
+| Projection | Replay cursors, bitemporal projection, graph projection | Temporal model |
+| Storage | Codecs, event stores, snapshots, compact snapshot adapter | Temporal model, projection |
+| Retrieval | Context compilation, rank fusion, analytics, evaluation | Temporal model, projection |
+| Extraction | Provider port, entity linker, validated event plans | Temporal model, projection |
+| Facade | Stable crate-root exports | All internal layers |
+
+Internal modules import the owning module rather than routing dependencies
+through the public facade. `.weavatrix/architecture.json` enforces zero runtime
+cycles, no dependency exceptions or baseline debt, at most 300 physical lines
+per Rust file, and at most 100 physical lines per function. Integration tests,
+benchmarks, and the evaluation CLI are verification adapters outside the
+runtime layer graph.
 
 Use `append` when the pending events must remain available to the caller. Use
 `append_owned` to transfer a batch into the store without cloning its input
@@ -143,7 +167,7 @@ JSON and the public codec API remain unchanged.
 
 ```toml
 [dependencies]
-weavatrix-memory = { version = "0.3.1", features = ["secure-storage"] }
+weavatrix-memory = { version = "0.3.2", features = ["secure-storage"] }
 ```
 
 `FileSnapshotStore` writes immutable, position-named snapshots through a

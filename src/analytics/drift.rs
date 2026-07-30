@@ -1,5 +1,11 @@
 use super::{ChangeKind, DriftReport, DriftSnapshot, MemoryAnalytics};
-use crate::{EntityId, MemoryError, MemoryProjection, Result, Timestamp};
+use crate::{
+    domain::MemoryFact,
+    error::{MemoryError, Result},
+    id::EntityId,
+    projection::MemoryProjection,
+    time::Timestamp,
+};
 
 impl MemoryAnalytics {
     /// Reconstructs a source/relation belief timeline from immutable facts.
@@ -56,7 +62,7 @@ impl MemoryAnalytics {
     }
 }
 
-fn classify(prior: &crate::MemoryFact, current: &crate::MemoryFact) -> ChangeKind {
+fn classify(prior: &MemoryFact, current: &MemoryFact) -> ChangeKind {
     if current.supersedes.as_ref() == Some(&prior.id) || current.target != prior.target {
         ChangeKind::Corrected
     } else if current.confidence > prior.confidence {

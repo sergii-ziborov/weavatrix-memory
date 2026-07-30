@@ -1,4 +1,5 @@
-use crate::{Codec, MemoryError, Result};
+use super::Codec;
+use crate::error::{MemoryError, Result};
 
 const HEADER: &[u8; 8] = b"WMEMLZ01";
 const HEADER_LEN: usize = 25;

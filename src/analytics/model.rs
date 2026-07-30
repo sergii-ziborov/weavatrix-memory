@@ -1,4 +1,9 @@
-use crate::{EntityId, FactId, MemoryFact, ProjectionClock};
+use crate::{
+    domain::MemoryFact,
+    id::{EntityId, FactId},
+    projection::ProjectionClock,
+    time::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +86,7 @@ pub enum ChangeKind {
 pub struct DriftSnapshot {
     pub fact: FactId,
     pub target: EntityId,
-    pub recorded_at: crate::Timestamp,
+    pub recorded_at: Timestamp,
     pub confidence_bps: u16,
     pub change: ChangeKind,
 }

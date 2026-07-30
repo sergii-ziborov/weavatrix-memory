@@ -1,5 +1,10 @@
 use super::{MemoryProjection, state::NodeRevision};
-use crate::{MemoryError, MemoryEvent, Projection, Result, StoredEvent};
+use crate::{
+    domain::MemoryEvent,
+    error::{MemoryError, Result},
+    event::StoredEvent,
+    projection::Projection,
+};
 
 impl Projection<MemoryEvent> for MemoryProjection {
     fn prepare_replay(&mut self, events: &[StoredEvent<MemoryEvent>]) {

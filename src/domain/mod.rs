@@ -10,7 +10,7 @@ pub use fact::MemoryFact;
 pub use node::MemoryNode;
 pub use view::{MemoryView, MemoryViewRef};
 
-use crate::{MemoryError, Result};
+use crate::error::{MemoryError, Result};
 
 pub(crate) fn validate_text(field: &'static str, value: &str) -> Result<()> {
     if value.is_empty() || value.trim() != value {

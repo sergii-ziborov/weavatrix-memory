@@ -56,6 +56,7 @@ jobs:
         run: |
           VERSION="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[0].version')"
           if curl --fail --silent --show-error \
+            --user-agent "weavatrix-release-verifier/1.0 (https://github.com/sergii-ziborov/weavatrix-memory)" \
             "https://crates.io/api/v1/crates/weavatrix-memory/$VERSION" |
             jq -e --arg version "$VERSION" '.version.num == $version' >/dev/null; then
             echo "published=true" >> "$GITHUB_OUTPUT"

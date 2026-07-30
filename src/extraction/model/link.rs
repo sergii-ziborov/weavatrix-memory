@@ -1,4 +1,9 @@
-use crate::{Confidence, EntityId, MemoryEvent, NewEvent, Result};
+use crate::{
+    domain::{Confidence, MemoryEvent},
+    error::{MemoryError, Result},
+    event::NewEvent,
+    id::EntityId,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +31,7 @@ impl LinkPolicy {
     /// Rejects scores or margins above 10,000.
     pub fn new(minimum_score: u16, minimum_margin: u16, create_unmatched: bool) -> Result<Self> {
         if minimum_score > 10_000 || minimum_margin > 10_000 {
-            return Err(crate::MemoryError::InvalidValue {
+            return Err(MemoryError::InvalidValue {
                 field: "link_policy",
                 reason: "scores must be between 0 and 10,000 basis points",
             });
